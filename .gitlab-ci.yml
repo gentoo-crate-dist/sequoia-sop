@@ -1,0 +1,122 @@
+stages:
+  - pre-check
+  - build
+  - test
+
+before_script:
+  - if [ -d $CARGO_TARGET_DIR ]; then find $CARGO_TARGET_DIR | wc --lines; du -sh $CARGO_TARGET_DIR; fi
+  - if [ -d $CARGO_HOME ]; then find $CARGO_HOME | wc --lines; du -sh $CARGO_HOME; fi
+  - rustc --version
+  - cargo --version
+  - clang --version
+
+after_script:
+  - find $CARGO_TARGET_DIR -type f -atime +7 -delete
+  - du -sh $CARGO_TARGET_DIR
+  - du -sh $CARGO_HOME
+
+bullseye:
+  tags:
+    - linux
+  stage: build
+  image: registry.gitlab.com/sequoia-pgp/build-docker-image/bullseye:latest
+  dependencies:
+    - codespell
+
+  script:
+    - cargo test
+    - if ! git diff --quiet Cargo.lock ; then echo "Cargo.lock changed.  Please add the change to the corresponding commit." ; false ; fi
+
+  variables:
+    CARGO_TARGET_DIR: $CI_PROJECT_DIR/../target.$CI_CONCURRENT_ID.bullseye
+    RUSTFLAGS: -D warnings -A unused-parens
+
+all_commits:
+  # Test each commit up to main, to facilitate bisecting.
+  stage: test
+  image: rust:1-slim-buster
+  needs: ["bullseye"]
+
+  before_script:
+    - apt update -y -qq
+    - apt install --no-install-recommends -y -qq -o=Dpkg::Use-Pty=0 clang libclang-dev llvm pkg-config nettle-dev git
+    - if [ -d $CARGO_TARGET_DIR ]; then find $CARGO_TARGET_DIR | wc --lines; du -sh $CARGO_TARGET_DIR; fi
+    - if [ -d $CARGO_HOME ]; then find $CARGO_HOME | wc --lines; du -sh $CARGO_HOME; fi
+    - rustc --version
+    - cargo --version
+    - clang --version
+
+  script:
+    # Use dummy identity to make git rebase happy.
+    - git config user.name "C.I. McTestface"
+    - git config user.email "ci.mctestface@example.com"
+    - git fetch origin main
+    - if ! git rebase --exec "echo ===; echo ===; echo ===; git log -n 1; cargo test" origin/main; then git rebase --abort; false; fi
+
+  variables:
+    CARGO_TARGET_DIR: $CI_PROJECT_DIR/../target.$CI_CONCURRENT_ID.all_commits
+    RUSTFLAGS: -D warnings -A unused-parens
+    GIT_STRATEGY: clone
+
+codespell:
+  tags:
+    - linux
+  stage: pre-check
+  image: registry.gitlab.com/sequoia-pgp/build-docker-image/bullseye:latest
+
+  before_script:
+    - codespell --version
+  script:
+    - >
+      codespell --disable-colors
+      -L "ede,iff,mut,nd,te,uint,KeyServer,keyserver,Keyserver,keyservers,Keyservers,keypair,keypairs,KeyPair,fpr,dedup"
+      -S "*.bin,*.gpg,*.pgp,./.git,data,highlight.js,*/target,Makefile"
+  after_script: []
+
+windows-gnu:
+  tags:
+    - win
+    - win2019
+  stage: build
+  image: registry.gitlab.com/sequoia-pgp/build-docker-image/windows-gnu
+  # This job takes ~20 minutes to run, let's only execute it manually or for
+  # scheduled builds, otherwise this will stall MRs often not related to Windows
+  only:
+    - /windows/i # refs containing 'windows' keyword
+    - tags
+    - web
+    - scheduled
+  before_script:
+    - clang -v
+    - rustc --version --verbose
+    - cargo --version
+  script:
+    - cargo test --no-default-features --features crypto-cng,compression
+  after_script: []
+  variables:
+    CFLAGS: "" # Silence some C warnings when compiling under Windows
+
+windows-msvc:
+  tags:
+    - win
+    - win2019
+  stage: build
+  image: registry.gitlab.com/sequoia-pgp/build-docker-image/windows-msvc
+  before_script:
+    - rustc --version --verbose
+    - cargo --version
+  script:
+    - cargo test --no-default-features --features crypto-cng,compression
+  after_script: []
+  variables:
+    CFLAGS: "" # Silence some C warnings when compiling with MSVC
+
+variables:
+  DEBIAN_FRONTEND: noninteractive
+  CARGO_HOME: $CI_PROJECT_DIR/../cargo
+  CARGO_FLAGS: --color always
+  CARGO_INCREMENTAL: 0
+  RUST_BACKTRACE: full
+  RUSTFLAGS: -D warnings
+  CFLAGS: -Werror
+  QUICKCHECK_GENERATOR_SIZE: 500 # https://github.com/BurntSushi/quickcheck/pull/240
