@@ -82,10 +82,10 @@ pub enum SOP {
         #[structopt(default_value = "binary", long = "as")]
         as_: EncryptAs,
         /// Encrypt with passwords.
-        #[structopt(long)]
+        #[structopt(long, number_of_values = 1)]
         with_password: Vec<String>,
         /// Keys for signing.
-        #[structopt(long)]
+        #[structopt(long, number_of_values = 1)]
         sign_with: Vec<String>,
         /// Encrypt for these certs.
         certs: Vec<String>,
@@ -96,16 +96,16 @@ pub enum SOP {
         #[structopt(long)]
         session_key_out: Option<String>,
         /// Try to decrypt with this session key.
-        #[structopt(long)]
+        #[structopt(long, number_of_values = 1)]
         with_session_key: Vec<String>,
         /// Try to decrypt with this password.
-        #[structopt(long)]
+        #[structopt(long, number_of_values = 1)]
         with_password: Vec<String>,
         /// Write verification result here.
         #[structopt(long)]
         verify_out: Option<String>,
         /// Certs for verification.
-        #[structopt(long)]
+        #[structopt(long, number_of_values = 1)]
         verify_with: Vec<String>,
         /// Consider signatures before this date invalid.
         #[structopt(long, parse(try_from_str = dates::parse_bound_round_down))]
