@@ -27,7 +27,7 @@ use super::{
     Result,
 };
 
-#[derive(StructOpt)]
+#[derive(Debug, StructOpt)]
 #[structopt(about = "An implementation of the \
                      Stateless OpenPGP Command Line Interface \
                      using Sequoia")]
@@ -130,7 +130,7 @@ pub enum SOP {
     Unsupported(Vec<String>),
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 pub enum SignAs {
     Binary,
     Text,
@@ -166,7 +166,7 @@ impl From<SignAs> for SignatureType {
     }
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 pub enum EncryptAs {
     Binary,
     Text,
@@ -219,7 +219,7 @@ impl From<EncryptAs> for DataFormat {
     }
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 pub enum ArmorKind {
     Auto,
     Sig,
