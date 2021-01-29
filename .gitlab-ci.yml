@@ -69,7 +69,7 @@ codespell:
   script:
     - >
       codespell --disable-colors
-      -L "ede,iff,mut,nd,te,uint,KeyServer,keyserver,Keyserver,keyservers,Keyservers,keypair,keypairs,KeyPair,fpr,dedup"
+      -L "crate,ede,iff,mut,nd,te,uint,KeyServer,keyserver,Keyserver,keyservers,Keyservers,keypair,keypairs,KeyPair,fpr,dedup"
       -S "*.bin,*.gpg,*.pgp,./.git,data,highlight.js,*/target,Makefile"
   after_script: []
 
