@@ -43,9 +43,11 @@ type Result<T> = anyhow::Result<T>;
 mod cli;
 use cli::{
     SOP, SignAs, EncryptAs, ArmorKind,
+};
+mod utils;
+use utils::{
     load_file, create_file, load_certs, load_keys, frob_passwords,
 };
-mod dates;
 
 fn main() {
     use std::process::exit;

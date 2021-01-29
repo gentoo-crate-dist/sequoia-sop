@@ -1,29 +1,14 @@
 use std::fmt;
-use std::path::Path;
 
-use anyhow::Context;
 use chrono::{DateTime, offset::Utc};
 use structopt::StructOpt;
 
 use sequoia_openpgp as openpgp;
 use openpgp::{
-    cert::{
-        Cert,
-        CertParser,
-    },
-    crypto::{
-        Password,
-    },
     types::{
         SignatureType,
         DataFormat,
     },
-    parse::Parse,
-};
-
-use super::{
-    dates,
-    Error,
     Result,
 };
 
@@ -63,10 +48,10 @@ pub enum SOP {
     /// Verifies Detached Signatures.
     Verify {
         /// Consider signatures before this date invalid.
-        #[structopt(long, parse(try_from_str = dates::parse_bound_round_down))]
+        #[structopt(long, parse(try_from_str = parse_bound_round_down))]
         not_before: Option<DateTime<Utc>>,
         /// Consider signatures after this date invalid.
-        #[structopt(long, parse(try_from_str = dates::parse_bound_round_up))]
+        #[structopt(long, parse(try_from_str = parse_bound_round_up))]
         not_after: Option<DateTime<Utc>>,
         /// Signatures to verify.
         signatures: String,
@@ -108,10 +93,10 @@ pub enum SOP {
         #[structopt(long, number_of_values = 1)]
         verify_with: Vec<String>,
         /// Consider signatures before this date invalid.
-        #[structopt(long, parse(try_from_str = dates::parse_bound_round_down))]
+        #[structopt(long, parse(try_from_str = parse_bound_round_down))]
         verify_not_before: Option<DateTime<Utc>>,
         /// Consider signatures after this date invalid.
-        #[structopt(long, parse(try_from_str = dates::parse_bound_round_up))]
+        #[structopt(long, parse(try_from_str = parse_bound_round_up))]
         verify_not_after: Option<DateTime<Utc>>,
         /// Try to decrypt with this key.
         key: Vec<String>,
@@ -256,79 +241,94 @@ impl fmt::Display for ArmorKind {
     }
 }
 
-
-fn is_special_designator<S: AsRef<str>>(file: S) -> bool {
-    file.as_ref().starts_with("@")
+/// Parses the given string depicting a ISO 8601 timestamp, rounding down.
+pub fn parse_bound_round_down(s: &str) -> Result<DateTime<Utc>> {
+    match s {
+        // XXX: parse "-" to None once we figure out how to do that
+        // with structopt.
+        "now" => Ok(Utc::now()),
+        _ => parse_iso8601(s, chrono::NaiveTime::from_hms(0, 0, 0)),
+    }
 }
 
-/// Loads the given (special) file.
-pub fn load_file<S: AsRef<str>>(file: S) -> Result<std::fs::File> {
-    let f = file.as_ref();
-
-    if is_special_designator(f) {
-        if Path::new(f).exists() {
-            return Err(anyhow::Error::from(Error::AmbiguousInput))
-                .context(format!("File {:?} exists", f));
-        }
-
-        return Err(anyhow::Error::from(Error::UnsupportedSpecialPrefix));
+/// Parses the given string depicting a ISO 8601 timestamp, rounding up.
+pub fn parse_bound_round_up(s: &str) -> Result<DateTime<Utc>> {
+    match s {
+        // XXX: parse "-" to None once we figure out how to do that
+        // with structopt.
+        "now" => Ok(Utc::now()),
+        _ => parse_iso8601(s, chrono::NaiveTime::from_hms(23, 59, 59)),
     }
-
-    std::fs::File::open(f).map_err(|_| Error::MissingInput)
-            .context(format!("Failed to open file {:?}", f))
 }
 
-/// Creates the given (special) file.
-pub fn create_file<S: AsRef<str>>(file: S) -> Result<std::fs::File> {
-    let f = file.as_ref();
-
-    if is_special_designator(f) {
-        if Path::new(f).exists() {
-            return Err(anyhow::Error::from(Error::AmbiguousInput))
-                .context(format!("File {:?} exists", f));
-        }
-
-        return Err(anyhow::Error::from(Error::UnsupportedSpecialPrefix));
-    }
-
-    if Path::new(f).exists() {
-        return Err(anyhow::Error::from(Error::OutputExists))
-            .context(format!("File {:?} exists", f));
-    }
-
-    std::fs::File::create(f).map_err(|_| Error::MissingInput) // XXX
-            .context(format!("Failed to create file {:?}", f))
-}
-
-/// Loads the certs given by the (special) files.
-pub fn load_certs(files: Vec<String>) -> Result<Vec<Cert>> {
-    let mut certs = vec![];
-    for f in files {
-        let r = load_file(&f)?;
-        for cert in CertParser::from_reader(r).map_err(|_| Error::BadData)
-            .context(format!("Failed to load CERTS from file {:?}", f))?
-        {
-            certs.push(
-                cert.context(format!("Malformed certificate in file {:?}", f))?
-            );
+/// Parses the given string depicting a ISO 8601 timestamp.
+fn parse_iso8601(s: &str, pad_date_with: chrono::NaiveTime)
+                 -> Result<DateTime<Utc>>
+{
+    // If you modify this function this function, synchronize the
+    // changes with the copy in sqv.rs!
+    for f in &[
+        "%Y-%m-%dT%H:%M:%S%#z",
+        "%Y-%m-%dT%H:%M:%S",
+        "%Y-%m-%dT%H:%M%#z",
+        "%Y-%m-%dT%H:%M",
+        "%Y-%m-%dT%H%#z",
+        "%Y-%m-%dT%H",
+        "%Y%m%dT%H%M%S%#z",
+        "%Y%m%dT%H%M%S",
+        "%Y%m%dT%H%M%#z",
+        "%Y%m%dT%H%M",
+        "%Y%m%dT%H%#z",
+        "%Y%m%dT%H",
+    ] {
+        if f.ends_with("%#z") {
+            if let Ok(d) = DateTime::parse_from_str(s, *f) {
+                return Ok(d.into());
+            }
+        } else {
+            if let Ok(d) = chrono::NaiveDateTime::parse_from_str(s, *f) {
+                return Ok(DateTime::from_utc(d, Utc));
+            }
         }
     }
-    Ok(certs)
-}
-
-/// Loads the KEY given by the (special) files.
-pub fn load_keys(files: Vec<String>) -> Result<Vec<Cert>> {
-    let mut keys = vec![];
-    for f in files {
-        let r = load_file(&f)?;
-        keys.push(Cert::from_reader(r).map_err(|_| Error::BadData)
-                   .context(format!("Failed to load KEY from file {:?}", f))?);
+    for f in &[
+        "%Y-%m-%d",
+        "%Y-%m",
+        "%Y-%j",
+        "%Y%m%d",
+        "%Y%m",
+        "%Y%j",
+        "%Y",
+    ] {
+        if let Ok(d) = chrono::NaiveDate::parse_from_str(s, *f) {
+            return Ok(DateTime::from_utc(d.and_time(pad_date_with), Utc));
+        }
     }
-    Ok(keys)
+    Err(anyhow::anyhow!("Malformed ISO8601 timestamp: {}", s))
 }
 
-/// Frobnicates the strings and converts them to passwords.
-pub fn frob_passwords(p: Vec<String>) -> Result<Vec<Password>> {
-    // XXX: Maybe do additional checks.
-    Ok(p.iter().map(|p| p.trim_end().into()).collect())
+#[test]
+fn test_parse_iso8601() {
+    let z = chrono::NaiveTime::from_hms(0, 0, 0);
+    parse_iso8601("2017-03-04T13:25:35Z", z).unwrap();
+    parse_iso8601("2017-03-04T13:25:35+08:30", z).unwrap();
+    parse_iso8601("2017-03-04T13:25:35", z).unwrap();
+    parse_iso8601("2017-03-04T13:25Z", z).unwrap();
+    parse_iso8601("2017-03-04T13:25", z).unwrap();
+    // parse_iso8601("2017-03-04T13Z", z).unwrap(); // XXX: chrono doesn't like
+    // parse_iso8601("2017-03-04T13", z).unwrap(); // ditto
+    parse_iso8601("2017-03-04", z).unwrap();
+    // parse_iso8601("2017-03", z).unwrap(); // ditto
+    parse_iso8601("2017-031", z).unwrap();
+    parse_iso8601("20170304T132535Z", z).unwrap();
+    parse_iso8601("20170304T132535+0830", z).unwrap();
+    parse_iso8601("20170304T132535", z).unwrap();
+    parse_iso8601("20170304T1325Z", z).unwrap();
+    parse_iso8601("20170304T1325", z).unwrap();
+    // parse_iso8601("20170304T13Z", z).unwrap(); // ditto
+    // parse_iso8601("20170304T13", z).unwrap(); // ditto
+    parse_iso8601("20170304", z).unwrap();
+    // parse_iso8601("201703", z).unwrap(); // ditto
+    parse_iso8601("2017031", z).unwrap();
+    // parse_iso8601("2017", z).unwrap(); // ditto
 }
