@@ -32,7 +32,6 @@ use openpgp::cert::prelude::*;
 use openpgp::serialize::{
     Serialize,
     stream::*,
-    stream::padding::Padder,
 };
 use openpgp::policy::StandardPolicy;
 
@@ -311,11 +310,8 @@ fn real_main() -> Result<()> {
                 .symmetric_algo(
                     symmetric_algos.get(0).cloned().unwrap_or_default());
 
-            let message = encryptor.build()
+            let mut message = encryptor.build()
                 .context("Failed to create encryptor")?;
-
-            // Pad the message.
-            let mut message = Padder::new(message).build()?;
 
             // Maybe sign the message.
             if let Some(s) = signers.pop() {
