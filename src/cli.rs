@@ -12,10 +12,18 @@ use openpgp::{
     Result,
 };
 
+lazy_static::lazy_static! {
+    static ref VERSION: String =
+        format!("{}, using sequoia {}", env!("CARGO_PKG_VERSION"), openpgp::VERSION);
+}
+
 #[derive(Debug, StructOpt)]
 #[structopt(about = "An implementation of the \
                      Stateless OpenPGP Command Line Interface \
-                     using Sequoia")]
+                     using Sequoia",
+            version(VERSION.as_str()),
+            long_version(VERSION.as_str()),
+            )]
 pub enum SOP {
     /// Prints version information.
     Version {

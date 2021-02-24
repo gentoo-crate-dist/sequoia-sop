@@ -24,6 +24,7 @@ anyhow = "1.0.18"
 chrono = "0.4.10"
 structopt = { version = "0.3.11", default-features = false }
 thiserror = "1.0.2"
+lazy_static = "1"
 
 [build-dependencies]
 sequoia-openpgp = { version = "1", default-features = false }
@@ -31,6 +32,7 @@ anyhow = "1"
 chrono = "0.4.10"
 clap = "2"
 structopt = { version = "0.3.11", default-features = false }
+lazy_static = "1"
 
 [[bin]]
 name = "sqop"
