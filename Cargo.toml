@@ -5,9 +5,9 @@ version = "0.22.1"
 authors = [
     "Justus Winter <justus@sequoia-pgp.org>",
 ]
-documentation = "https://tools.ietf.org/html/draft-dkg-openpgp-stateless-cli-02"
+documentation = "https://gitlab.com/dkg/openpgp-stateless-cli#stateless-openpgp-command-line-interface"
 homepage = "https://sequoia-pgp.org/"
-repository = "https://gitlab.com/sequoia-pgp/sequoia"
+repository = "https://gitlab.com/sequoia-pgp/sequoia-sop"
 readme = "README.md"
 keywords = ["cryptography", "openpgp", "pgp", "sop", "stateless-openpgp"]
 categories = ["cryptography", "command-line-utilities"]
