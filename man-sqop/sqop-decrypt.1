@@ -1,0 +1,52 @@
+.TH SQOP-DECRYPT "1" "FEBRUARY 2021" "0.22.1, USING SEQUOIA 1.0.0" "USER COMMANDS" 5
+.SH NAME
+sqop\-decrypt \- Decrypts a Message
+.SH SYNOPSIS
+\fBsqop decrypt\fR [FLAGS] [OPTIONS] [key]
+.SH FLAGS
+.TP
+\fB\-h\fR, \fB\-\-help\fR
+Prints help information
+.SH OPTIONS
+.TP
+\fB\-\-session\-key\-out\fR session\-key\-out
+Write the session key here
+
+.TP
+\fB\-\-verify\-not\-after\fR verify\-not\-after
+Consider signatures after this date invalid
+
+.TP
+\fB\-\-verify\-not\-before\fR verify\-not\-before
+Consider signatures before this date invalid
+
+.TP
+\fB\-\-verify\-out\fR verify\-out
+Write verification result here
+
+.TP
+\fB\-\-verify\-with\fR verify\-with
+Certs for verification
+
+.TP
+\fB\-\-with\-password\fR with\-password
+Try to decrypt with this password
+
+.TP
+\fB\-\-with\-session\-key\fR with\-session\-key
+Try to decrypt with this session key
+.SH ARGS
+.TP
+key
+Try to decrypt with this key
+.SH SEE ALSO
+.ad l
+.nh
+sqop(1), sqop\-armor(1), sqop\-dearmor(1), sqop\-decrypt(1), sqop\-encrypt(1), sqop\-extract\-cert(1), sqop\-generate\-key(1), sqop\-sign(1), sqop\-verify(1), sqop\-version(1)
+
+
+.SH AUTHOR
+.P
+.RS 2
+.nf
+Justus Winter <justus@sequoia\-pgp.org>
