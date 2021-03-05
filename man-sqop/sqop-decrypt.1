@@ -1,4 +1,4 @@
-.TH SQOP-DECRYPT "1" "FEBRUARY 2021" "0.22.1, USING SEQUOIA 1.0.0" "USER COMMANDS" 5
+.TH SQOP-DECRYPT "1" "2021-03-05" "0.22.2, USING SEQUOIA 1.1.0" "USER COMMANDS" 5
 .SH NAME
 sqop\-decrypt \- Decrypts a Message
 .SH SYNOPSIS
@@ -13,12 +13,12 @@ Prints help information
 Write the session key here
 
 .TP
-\fB\-\-verify\-not\-after\fR verify\-not\-after
-Consider signatures after this date invalid
+\fB\-\-with\-session\-key\fR with\-session\-key
+Try to decrypt with this session key
 
 .TP
-\fB\-\-verify\-not\-before\fR verify\-not\-before
-Consider signatures before this date invalid
+\fB\-\-with\-password\fR with\-password
+Try to decrypt with this password
 
 .TP
 \fB\-\-verify\-out\fR verify\-out
@@ -29,12 +29,12 @@ Write verification result here
 Certs for verification
 
 .TP
-\fB\-\-with\-password\fR with\-password
-Try to decrypt with this password
+\fB\-\-verify\-not\-before\fR verify\-not\-before
+Consider signatures before this date invalid
 
 .TP
-\fB\-\-with\-session\-key\fR with\-session\-key
-Try to decrypt with this session key
+\fB\-\-verify\-not\-after\fR verify\-not\-after
+Consider signatures after this date invalid
 .SH ARGS
 .TP
 key
