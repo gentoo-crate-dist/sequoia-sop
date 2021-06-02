@@ -1,11 +1,11 @@
 [package]
 name = "sequoia-sop"
 description = "An implementation of the Stateless OpenPGP Command Line Interface using Sequoia"
-version = "0.22.2"
+version = "0.23.0"
 authors = [
     "Justus Winter <justus@sequoia-pgp.org>",
 ]
-documentation = "https://gitlab.com/dkg/openpgp-stateless-cli#stateless-openpgp-command-line-interface"
+documentation = "https://docs.rs/sequoia-sop"
 homepage = "https://sequoia-pgp.org/"
 repository = "https://gitlab.com/sequoia-pgp/sequoia-sop"
 readme = "README.md"
