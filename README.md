@@ -1,16 +1,20 @@
-An implementation of the Stateless OpenPGP Command Line Interface
-using Sequoia.
+An implementation of the Stateless OpenPGP Interface using Sequoia.
 
-This implements a subset of the [Stateless OpenPGP Command Line
-Interface] (SOP) using the Sequoia OpenPGP implementation.  While SOP
-is not intended for daily use, it is a good way to interact with and
-explore OpenPGP implementations.  SOP is primarily used as abstraction
-in the [OpenPGP interoperability test suite].
+This implements the [Stateless OpenPGP Command Line Interface] (SOP)
+using the Sequoia OpenPGP implementation.  This crate implements the
+[Rust SOP interface], as well as providing a command line frontend.
+
+SOP implementations enjoy broad compatibility, see the [OpenPGP
+interoperability test suite].
 
   [Stateless OpenPGP Command Line Interface]: https://datatracker.ietf.org/doc/draft-dkg-openpgp-stateless-cli/
+  [Rust SOP interface]: https://docs.rs/sop
   [OpenPGP interoperability test suite]: https://tests.sequoia-pgp.org/
 
-# SOP primer
+# SOP cli primer
+
+To build the cli frontend, enable the "cli" feature, e.g. using `cargo
+build --features=cli` or `cargo install sequoia-sop --features=cli`.
 
 To demonstrate SOP, let's generate a key, and encrypt and decrypt a
 message:
@@ -24,7 +28,7 @@ First, we generate a key for `julia@example.org`.  Next, we extract
 the certificate, i.e. the key without the secret key material.
 
 ```sh
-$ echo "a message" | sqop encrypt julia.public.pgp > message.pgp
+$ echo "a message" | sqop encrypt julia.public.pgp > message.pgpo
 $ sqop decrypt julia.secret.pgp < message.pgp
 a message
 ```

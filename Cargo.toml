@@ -19,27 +19,23 @@ gitlab = { repository = "sequoia-pgp/sequoia-sop" }
 maintenance = { status = "actively-developed" }
 
 [dependencies]
+sop = "0.1.1"
 sequoia-openpgp = { version = "1", default-features = false }
 anyhow = "1.0.18"
-chrono = "0.4.10"
-structopt = { version = "0.3.11", default-features = false }
-thiserror = "1.0.2"
-lazy_static = "1"
 
 [build-dependencies]
-sequoia-openpgp = { version = "1", default-features = false }
-anyhow = "1"
-chrono = "0.4.10"
-clap = "2"
-structopt = { version = "0.3.11", default-features = false }
-lazy_static = "1"
+sop = "0.1.1"
+
+[lib]
 
 [[bin]]
 name = "sqop"
 path = "src/main.rs"
+required-features = ["cli"]
 
 [features]
 default = ["sequoia-openpgp/default"]
+cli = ["sop/cli"]
 crypto-nettle = ["sequoia-openpgp/crypto-nettle"]
 crypto-cng = ["sequoia-openpgp/crypto-cng"]
 compression = ["sequoia-openpgp/compression"]

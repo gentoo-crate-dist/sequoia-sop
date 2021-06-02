@@ -34,15 +34,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "ansi_term"
-version = "0.11.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ee49baf6cb617b853aa8d93bf420db2383fab46d314482ca2803b40d5fde979b"
-dependencies = [
- "winapi",
-]
-
-[[package]]
 name = "anyhow"
 version = "1.0.40"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -271,13 +262,9 @@ version = "2.33.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "37e58ac78573c40708d45522f0d80fa2f01cc4f9b4e2bf749807255454312002"
 dependencies = [
- "ansi_term",
- "atty",
  "bitflags",
- "strsim",
  "textwrap",
  "unicode-width",
- "vec_map",
 ]
 
 [[package]]
@@ -992,12 +979,8 @@ name = "sequoia-sop"
 version = "0.22.2"
 dependencies = [
  "anyhow",
- "chrono",
- "clap",
- "lazy_static",
  "sequoia-openpgp",
- "structopt",
- "thiserror",
+ "sop",
 ]
 
 [[package]]
@@ -1049,6 +1032,18 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "fe0f37c9e8f3c5a4a66ad655a93c74daac4ad00c441533bf5c6e7990bb42604e"
 
 [[package]]
+name = "sop"
+version = "0.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "02774999383f9c8cf7fab0b063e43445b9f74965efecbe1528bc0b4a9597720a"
+dependencies = [
+ "anyhow",
+ "chrono",
+ "structopt",
+ "thiserror",
+]
+
+[[package]]
 name = "spin"
 version = "0.5.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1065,12 +1060,6 @@ dependencies = [
  "phf_shared",
  "precomputed-hash",
 ]
-
-[[package]]
-name = "strsim"
-version = "0.8.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8ea5119cdb4c55b55d432abb513a0429384878c15dde60cc77b1c99de1a95a6a"
 
 [[package]]
 name = "structopt"
@@ -1247,12 +1236,6 @@ name = "vcpkg"
 version = "0.2.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "cbdbff6266a24120518560b5dc983096efb98462e51d0d68169895b237be3e5d"
-
-[[package]]
-name = "vec_map"
-version = "0.8.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f1bddf1187be692e79c5ffeab891132dfb0f236ed36a43c7ed39f1165ee20191"
 
 [[package]]
 name = "version_check"
