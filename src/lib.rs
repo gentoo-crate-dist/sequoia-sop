@@ -208,13 +208,11 @@ impl<'a> ExtractCert<'a> {
 }
 
 impl<'a> sop::ExtractCert<'a> for ExtractCert<'a> {
-    /// Disables armor encoding.
     fn no_armor(mut self: Box<Self>) -> Box<dyn sop::ExtractCert<'a> + 'a> {
         self.no_armor = true;
         self
     }
 
-    /// Extracts the cert from `key`.
     fn key(self: Box<Self>, key: &mut (dyn io::Read + Send + Sync))
            -> Result<Box<dyn Ready + 'a>> {
         Ok(Box::new(ExtractCertReady {
@@ -547,13 +545,11 @@ impl<'a> Encrypt<'a> {
 }
 
 impl<'a> sop::Encrypt<'a> for Encrypt<'a> {
-    /// Disables armor encoding.
     fn no_armor(mut self: Box<Self>) -> Box<dyn sop::Encrypt<'a> + 'a> {
         self.sign.no_armor = true;
         self
     }
 
-    /// Sets encryption mode.
     fn mode(mut self: Box<Self>, mode: EncryptAs) -> Box<dyn sop::Encrypt<'a> + 'a> {
         self.sign.mode = mode.into();
         self.mode = mode;
@@ -574,7 +570,6 @@ impl<'a> sop::Encrypt<'a> for Encrypt<'a> {
         Ok(self)
     }
 
-    /// Encrypts with the given password.
     fn with_password(mut self: Box<Self>, password: Password)
                      -> Result<Box<dyn sop::Encrypt<'a> + 'a>> {
         self.passwords.push(password);
@@ -595,7 +590,6 @@ impl<'a> sop::Encrypt<'a> for Encrypt<'a> {
         Ok(self)
     }
 
-    /// Encrypts the given data yielding the ciphertext.
     fn plaintext(self: Box<Self>,
                  plaintext: &'a mut (dyn io::Read + Send + Sync))
                  -> Result<Box<dyn Ready + 'a>> {
@@ -672,21 +666,18 @@ impl<'a> Decrypt<'a> {
 }
 
 impl<'a> sop::Decrypt<'a> for Decrypt<'a> {
-    /// Makes SOP consider signatures before this date invalid.
     fn verify_not_before(mut self: Box<Self>, t: SystemTime)
                          -> Box<dyn sop::Decrypt<'a> + 'a> {
         self.verify.not_before = Some(t);
         self
     }
 
-    /// Makes SOP consider signatures after this date invalid.
     fn verify_not_after(mut self: Box<Self>, t: SystemTime)
                         -> Box<dyn sop::Decrypt<'a> + 'a> {
         self.verify.not_after = Some(t);
         self
     }
 
-    /// Adds the verification cert.
     fn verify_with_cert(mut self: Box<Self>,
                         cert: &mut (dyn io::Read + Send + Sync))
                         -> Result<Box<dyn sop::Decrypt<'a> + 'a>> {
@@ -703,29 +694,24 @@ impl<'a> sop::Decrypt<'a> for Decrypt<'a> {
         Ok(self)
     }
 
-    /// Tries to decrypt with the given session key.
     fn with_session_key(mut self: Box<Self>, sk: sop::SessionKey)
                         -> Result<Box<dyn sop::Decrypt<'a> + 'a>> {
         self.session_keys.push(sk);
         Ok(self)
     }
 
-    /// Tries to decrypt with the given password.
     fn with_password(mut self: Box<Self>, password: Password)
                      -> Result<Box<dyn sop::Decrypt<'a> + 'a>> {
         self.passwords.push(password);
         Ok(self)
     }
 
-    /// Adds the decryption key.
     fn with_key(mut self: Box<Self>, key: &mut (dyn io::Read + Send + Sync))
                 -> Result<Box<dyn sop::Decrypt<'a> + 'a>> {
         self.keys.push(Cert::from_reader(key).map_err(sop_error)?);
         Ok(self)
     }
 
-    /// Decrypts `ciphertext`, returning verification results and
-    /// plaintext.
     fn ciphertext(self: Box<Self>,
                   ciphertext: &'a mut (dyn io::Read + Send + Sync))
                   -> Result<Box<dyn sop::ReadyWithResult<(Option<sop::SessionKey>,
@@ -900,7 +886,6 @@ impl<'a> Dearmor<'a> {
 }
 
 impl<'a> sop::Dearmor<'a> for Dearmor<'a> {
-    /// Extracts the cert from `key`.
     fn data(self: Box<Self>, data: &'a mut (dyn io::Read + Send + Sync))
         -> Result<Box<dyn sop::Ready + 'a>> {
         Ok(Box::new(DearmorReady {
