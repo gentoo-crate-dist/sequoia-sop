@@ -56,7 +56,7 @@ use openpgp::{
     Fingerprint,
     KeyID,
 };
-use openpgp::crypto::{self, Password, SessionKey};
+use openpgp::crypto::{self, SessionKey};
 use openpgp::packet::{key, Key, PKESK, SKESK};
 use openpgp::policy::Policy;
 
@@ -275,7 +275,18 @@ impl Sign<'_> {
     fn add_signing_key(&mut self, key: &mut (dyn io::Read + Send + Sync))
                        -> Result<()> {
         let cert = Cert::from_reader(key).map_err(sop_error)?;
+        self.add_signing_cert(cert)
+    }
 
+    fn add_signing_keys(&mut self, keys: &mut (dyn io::Read + Send + Sync))
+                        -> Result<()> {
+        for cert in CertParser::from_reader(keys).map_err(sop_error)? {
+            self.add_signing_cert(cert.map_err(sop_error)?)?;
+        }
+        Ok(())
+    }
+
+    fn add_signing_cert(&mut self, cert: Cert) -> Result<()> {
         let vcert =
             cert.with_policy(self.sqop.policy, None)
             .map_err(|_| Error::CertCannotSign)?;
@@ -324,6 +335,12 @@ impl<'a> sop::Sign<'a> for Sign<'a> {
     fn key(mut self: Box<Self>, key: &mut (dyn io::Read + Send + Sync))
            -> Result<Box<dyn sop::Sign<'a> + 'a>> {
         self.add_signing_key(key)?;
+        Ok(self)
+    }
+
+    fn keys(mut self: Box<Self>, keys: &mut (dyn io::Read + Send + Sync))
+           -> Result<Box<dyn sop::Sign<'a> + 'a>> {
+        self.add_signing_keys(keys)?;
         Ok(self)
     }
 
@@ -417,6 +434,14 @@ impl<'a> sop::Verify<'a> for Verify<'a> {
         Ok(self)
     }
 
+    fn certs(mut self: Box<Self>, cert: &mut (dyn io::Read + Send + Sync))
+             -> Result<Box<dyn sop::Verify<'a> + 'a>> {
+        for cert in CertParser::from_reader(cert).map_err(sop_error)? {
+            self.certs.push(cert.map_err(sop_error)?);
+        }
+        Ok(self)
+    }
+
     fn signatures(self: Box<Self>,
                   signatures: &'a mut (dyn io::Read + Send + Sync))
                   -> Result<Box<dyn sop::VerifySignatures + 'a>> {
@@ -460,7 +485,7 @@ struct Encrypt<'a> {
     mode: EncryptAs,
     symmetric_algos: Vec<SymmetricAlgorithm>,
     recipients: Vec<Key<key::PublicParts, key::UnspecifiedRole>>,
-    passwords: Vec<String>,
+    passwords: Vec<Password>,
 }
 
 impl<'a> Encrypt<'a> {
@@ -485,40 +510,9 @@ impl<'a> Encrypt<'a> {
             passwords: Default::default(),
         }))
     }
-}
 
-impl<'a> sop::Encrypt<'a> for Encrypt<'a> {
-    /// Disables armor encoding.
-    fn no_armor(mut self: Box<Self>) -> Box<dyn sop::Encrypt<'a> + 'a> {
-        self.sign.no_armor = true;
-        self
-    }
-
-    /// Sets encryption mode.
-    fn mode(mut self: Box<Self>, mode: EncryptAs) -> Box<dyn sop::Encrypt<'a> + 'a> {
-        self.sign.mode = mode.into();
-        self.mode = mode;
-        self
-    }
-
-    /// Adds the signer key.
-    fn sign_with(mut self: Box<Self>, key: &mut (dyn io::Read + Send + Sync))
-                 -> Result<Box<dyn sop::Encrypt<'a> + 'a>> {
-        self.sign.add_signing_key(key)?;
-        Ok(self)
-    }
-
-    /// Encrypts with the given password.
-    fn with_password(mut self: Box<Self>, password: &str)
-                     -> Result<Box<dyn sop::Encrypt<'a> + 'a>> {
-        self.passwords.push(normalize_password(password));
-        Ok(self)
-    }
-
-    /// Encrypts with the given cert.
-    fn with_cert(mut self: Box<Self>, cert: &mut (dyn io::Read + Send + Sync))
-                 -> Result<Box<dyn sop::Encrypt<'a> + 'a>> {
-        let cert = Cert::from_reader(cert).map_err(sop_error)?;
+    fn add_cert(mut self: Box<Self>, cert: Cert)
+                 -> Result<Box<Self>> {
         let vcert = cert.with_policy(self.sign.sqop.policy, None)
             .map_err(|_| sop::Error::CertCannotEncrypt)?;
 
@@ -550,6 +544,56 @@ impl<'a> sop::Encrypt<'a> for Encrypt<'a> {
             Err(Error::CertCannotEncrypt)
         }
     }
+}
+
+impl<'a> sop::Encrypt<'a> for Encrypt<'a> {
+    /// Disables armor encoding.
+    fn no_armor(mut self: Box<Self>) -> Box<dyn sop::Encrypt<'a> + 'a> {
+        self.sign.no_armor = true;
+        self
+    }
+
+    /// Sets encryption mode.
+    fn mode(mut self: Box<Self>, mode: EncryptAs) -> Box<dyn sop::Encrypt<'a> + 'a> {
+        self.sign.mode = mode.into();
+        self.mode = mode;
+        self
+    }
+
+    fn sign_with_key(mut self: Box<Self>,
+                     key: &mut (dyn io::Read + Send + Sync))
+                     -> Result<Box<dyn sop::Encrypt<'a> + 'a>> {
+        self.sign.add_signing_key(key)?;
+        Ok(self)
+    }
+
+    fn sign_with_keys(mut self: Box<Self>,
+                      keys: &mut (dyn io::Read + Send + Sync))
+                      -> Result<Box<dyn sop::Encrypt<'a> + 'a>> {
+        self.sign.add_signing_keys(keys)?;
+        Ok(self)
+    }
+
+    /// Encrypts with the given password.
+    fn with_password(mut self: Box<Self>, password: Password)
+                     -> Result<Box<dyn sop::Encrypt<'a> + 'a>> {
+        self.passwords.push(password);
+        Ok(self)
+    }
+
+    fn with_cert(self: Box<Self>, cert: &mut (dyn io::Read + Send + Sync))
+                 -> Result<Box<dyn sop::Encrypt<'a> + 'a>> {
+        let cert = Cert::from_reader(cert).map_err(sop_error)?;
+        Ok(self.add_cert(cert)?)
+    }
+
+    fn with_certs(mut self: Box<Self>, certs: &mut (dyn io::Read + Send + Sync))
+                  -> Result<Box<dyn sop::Encrypt<'a> + 'a>> {
+        for cert in CertParser::from_reader(certs).map_err(sop_error)? {
+            self = self.add_cert(cert.map_err(sop_error)?)?;
+        }
+        Ok(self)
+    }
 
     /// Encrypts the given data yielding the ciphertext.
     fn plaintext(self: Box<Self>,
@@ -579,7 +623,8 @@ impl<'a> sop::Ready for EncryptReady<'a> {
         // Encrypt the message.
         let mut message =
             Encryptor::for_recipients(message, self.encrypt.recipients.iter())
-            .add_passwords(self.encrypt.passwords)
+            .add_passwords(
+                self.encrypt.passwords.into_iter().map(convert_password))
             .symmetric_algo(
                 self.encrypt.symmetric_algos.get(0).cloned().unwrap_or_default())
             .build().map_err(sop_error)?;
@@ -611,7 +656,7 @@ impl<'a> sop::Ready for EncryptReady<'a> {
 struct Decrypt<'a> {
     verify: Verify<'a>,
     session_keys: Vec<sop::SessionKey>,
-    passwords: Vec<String>,
+    passwords: Vec<Password>,
     keys: Vec<Cert>,
 }
 
@@ -649,6 +694,15 @@ impl<'a> sop::Decrypt<'a> for Decrypt<'a> {
         Ok(self)
     }
 
+    fn verify_with_certs(mut self: Box<Self>,
+                         certs: &mut (dyn io::Read + Send + Sync))
+                         -> Result<Box<dyn sop::Decrypt<'a> + 'a>> {
+        for cert in CertParser::from_reader(certs).map_err(sop_error)? {
+            self.verify.certs.push(cert.map_err(sop_error)?);
+        }
+        Ok(self)
+    }
+
     /// Tries to decrypt with the given session key.
     fn with_session_key(mut self: Box<Self>, sk: sop::SessionKey)
                         -> Result<Box<dyn sop::Decrypt<'a> + 'a>> {
@@ -657,9 +711,9 @@ impl<'a> sop::Decrypt<'a> for Decrypt<'a> {
     }
 
     /// Tries to decrypt with the given password.
-    fn with_password(mut self: Box<Self>, password: &str)
+    fn with_password(mut self: Box<Self>, password: Password)
                      -> Result<Box<dyn sop::Decrypt<'a> + 'a>> {
-        self.passwords.push(normalize_password(password));
+        self.passwords.push(password);
         Ok(self)
     }
 
@@ -1018,7 +1072,7 @@ impl VerificationHelper for VHelper {
 struct Helper {
     vhelper: VHelper,
     session_keys: Vec<sop::SessionKey>,
-    passwords: Vec<Password>,
+    passwords: Vec<crypto::Password>,
     secret_keys:
         HashMap<KeyID, Key<key::SecretParts, key::UnspecifiedRole>>,
     identities: HashMap<KeyID, Fingerprint>,
@@ -1026,12 +1080,11 @@ struct Helper {
 }
 
 impl Helper {
-    fn new<P>(policy: &dyn Policy,
-              vhelper: VHelper,
-              session_keys: Vec<sop::SessionKey>,
-              passwords: impl IntoIterator<Item = P>,
-              secrets: Vec<Cert>) -> Self
-    where P: Into<openpgp::crypto::Password>,
+    fn new(policy: &dyn Policy,
+           vhelper: VHelper,
+           session_keys: Vec<sop::SessionKey>,
+           passwords: Vec<Password>,
+           secrets: Vec<Cert>) -> Self
     {
         let mut secret_keys = HashMap::new();
         let mut identities: HashMap<KeyID, Fingerprint> = HashMap::new();
@@ -1050,7 +1103,7 @@ impl Helper {
         Helper {
             vhelper,
             session_keys: session_keys.into_iter().map(Into::into).collect(),
-            passwords: passwords.into_iter().map(Into::into).collect(),
+            passwords: passwords.into_iter().map(convert_password).collect(),
             secret_keys,
             identities,
             session_key: None,
@@ -1190,6 +1243,10 @@ fn into_data_format(mode: EncryptAs) -> DataFormat {
     }
 }
 
+fn convert_password(p: Password) -> crypto::Password {
+    p.as_ref().into()
+}
+
 /// Prints the error and causes, if any.
 fn print_error_chain(sink: &mut dyn io::Write, err: &anyhow::Error)
                      -> io::Result<()>
@@ -1303,7 +1360,7 @@ mod tests {
 
         let mut statement_cur = Cursor::new(&statement);
         let ciphertext = sop.encrypt()?
-            .sign_with(&mut Cursor::new(&alice_sec))?
+            .sign_with_key(&mut Cursor::new(&alice_sec))?
             .mode(EncryptAs::MIME)
             .with_cert(&mut Cursor::new(&bob_pgp))?
             .plaintext(&mut statement_cur)?
