@@ -1,0 +1,29 @@
+[package]
+name = "sequoia-sop-py"
+description = "Python interface implementing the Stateless OpenPGP Interface using Sequoia"
+version = "0.24.0"
+authors = [
+    "Justus Winter <justus@sequoia-pgp.org>",
+]
+documentation = "https://docs.rs/sequoia-sop" # XXX
+homepage = "https://sequoia-pgp.org/"
+repository = "https://gitlab.com/sequoia-pgp/sequoia-sop"
+readme = "README.md"
+keywords = ["cryptography", "openpgp", "pgp", "sop", "stateless-openpgp"]
+categories = ["cryptography"] # XXX
+license = "GPL-2.0-or-later"
+edition = "2018"
+
+[badges]
+gitlab = { repository = "sequoia-pgp/sequoia-sop" }
+maintenance = { status = "actively-developed" }
+
+[dependencies]
+anyhow = "1.0.18"
+pyo3 = "0.14.1"
+sequoia-sop = { path = ".." }
+sop = "0.2"
+
+[lib]
+name = "py_sequoia_sop"
+crate-type = ["cdylib"]
