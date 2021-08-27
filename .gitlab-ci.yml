@@ -85,7 +85,7 @@ windows-gnu:
     - /windows/i # refs containing 'windows' keyword
     - tags
     - web
-    - scheduled
+    - schedules
   before_script:
     - clang -v
     - rustc --version --verbose
