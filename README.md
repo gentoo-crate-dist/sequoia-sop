@@ -28,7 +28,7 @@ First, we generate a key for `julia@example.org`.  Next, we extract
 the certificate, i.e. the key without the secret key material.
 
 ```sh
-$ echo "a message" | sqop encrypt julia.public.pgp > message.pgpo
+$ echo "a message" | sqop encrypt julia.public.pgp > message.pgp
 $ sqop decrypt julia.secret.pgp < message.pgp
 a message
 ```
