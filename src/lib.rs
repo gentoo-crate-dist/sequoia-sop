@@ -95,7 +95,7 @@ impl<'a> SQOP<'a> {
 
 impl<'a> sop::SOP for SQOP<'a> {
     fn version<'b>(&'b self) -> Result<Box<dyn sop::Version + 'b>> {
-        Ok(Box::new(self))
+        Ok(Box::new(Version {}))
     }
     fn generate_key<'b>(&'b self) -> Result<Box<dyn sop::GenerateKey + 'b>> {
         GenerateKey::new(self)
@@ -123,13 +123,21 @@ impl<'a> sop::SOP for SQOP<'a> {
     }
 }
 
-impl sop::Version<'_> for &SQOP<'_> {
-    fn name(&self) -> String {
-        "Sequoia".into()
+struct Version {}
+
+impl<'a> sop::Version<'a> for Version {
+    fn frontend(&self) -> Result<sop::VersionInfo> {
+        Ok(sop::VersionInfo {
+            name: "sqop".into(),
+            version: env!("CARGO_PKG_VERSION").into(),
+        })
     }
 
-    fn version(&self) -> String {
-        openpgp::VERSION.into()
+    fn backend(&self) -> Result<sop::VersionInfo> {
+        Ok(sop::VersionInfo {
+            name: "Sequoia".into(),
+            version: openpgp::VERSION.into(),
+        })
     }
 }
 
@@ -217,14 +225,24 @@ impl<'a> sop::ExtractCert<'a> for ExtractCert<'a> {
            -> Result<Box<dyn Ready + 'a>> {
         Ok(Box::new(ExtractCertReady {
             extract_cert: *self,
-            cert: Cert::from_reader(key).map_err(sop_error)?,
+            certs: vec![Cert::from_reader(key).map_err(sop_error)?],
+        }))
+    }
+
+    fn keys(self: Box<Self>, keys: &mut (dyn io::Read + Send + Sync))
+            -> Result<Box<dyn Ready + 'a>> {
+        Ok(Box::new(ExtractCertReady {
+            extract_cert: *self,
+            certs: CertParser::from_reader(keys).map_err(sop_error)?
+                .collect::<openpgp::Result<Vec<openpgp::Cert>>>()
+                .map_err(sop_error)?,
         }))
     }
 }
 
 struct ExtractCertReady<'a> {
     extract_cert: ExtractCert<'a>,
-    cert: openpgp::Cert,
+    certs: Vec<openpgp::Cert>,
 }
 
 impl<'a> sop::Ready for ExtractCertReady<'a> {
@@ -232,9 +250,13 @@ impl<'a> sop::Ready for ExtractCertReady<'a> {
                 -> Result<()>
     {
         if self.extract_cert.no_armor {
-            self.cert.serialize(sink).map_err(sop_error)?;
+            for cert in self.certs {
+                cert.serialize(sink).map_err(sop_error)?;
+            }
         } else {
-            self.cert.armored().serialize(sink).map_err(sop_error)?;
+            for cert in self.certs {
+                cert.armored().serialize(sink).map_err(sop_error)?;
+            }
         }
         Ok(())
     }
@@ -287,7 +309,7 @@ impl Sign<'_> {
     fn add_signing_cert(&mut self, cert: Cert) -> Result<()> {
         let vcert =
             cert.with_policy(self.sqop.policy, None)
-            .map_err(|_| Error::CertCannotSign)?;
+            .map_err(|_| Error::KeyCannotSign)?;
         if let Some(p) = vcert.preferred_hash_algorithms() {
             self.hash_algos.retain(|a| p.contains(a));
         }
@@ -314,7 +336,7 @@ impl Sign<'_> {
         if one {
             Ok(())
         } else {
-            Err(Error::CertCannotSign)
+            Err(Error::KeyCannotSign)
         }
     }
 }
@@ -343,7 +365,7 @@ impl<'a> sop::Sign<'a> for Sign<'a> {
     }
 
     fn data(self: Box<Self>, data: &'a mut (dyn io::Read + Send + Sync))
-        -> Result<Box<dyn Ready + 'a>> {
+        -> Result<Box<dyn ReadyWithResult<sop::Micalg> + 'a>> {
         if self.signers.is_empty() {
             return Err(Error::MissingArg);
         }
@@ -360,9 +382,9 @@ struct SignReady<'a> {
     data: &'a mut (dyn io::Read + Send + Sync),
 }
 
-impl<'a> sop::Ready for SignReady<'a> {
+impl<'a> sop::ReadyWithResult<sop::Micalg> for SignReady<'a> {
     fn write_to(mut self: Box<Self>, sink: &mut (dyn io::Write + Send + Sync))
-                -> Result<()>
+                -> Result<sop::Micalg>
     {
         let mut message = Message::new(sink);
         if ! self.sign.no_armor {
@@ -385,7 +407,7 @@ impl<'a> sop::Ready for SignReady<'a> {
         let mut message = signer.build().map_err(sop_error)?;
         io::copy(self.data, &mut message)?;
         message.finalize().map_err(sop_error)?;
-        Ok(())
+        Ok(u8::from(HashAlgorithm::default()).into())
     }
 }
 
@@ -709,6 +731,14 @@ impl<'a> sop::Decrypt<'a> for Decrypt<'a> {
     fn with_key(mut self: Box<Self>, key: &mut (dyn io::Read + Send + Sync))
                 -> Result<Box<dyn sop::Decrypt<'a> + 'a>> {
         self.keys.push(Cert::from_reader(key).map_err(sop_error)?);
+        Ok(self)
+    }
+
+    fn with_keys(mut self: Box<Self>, keys: &mut (dyn io::Read + Send + Sync))
+                 -> Result<Box<dyn sop::Decrypt<'a> + 'a>> {
+        for key in CertParser::from_reader(keys).map_err(sop_error)? {
+            self.keys.push(key.map_err(sop_error)?);
+        }
         Ok(self)
     }
 
@@ -1330,7 +1360,7 @@ mod tests {
 
         let statement = b"Hello World :)";
         let mut data = Cursor::new(&statement);
-        let statement_asc = sop.sign()?
+        let (_micalg, statement_asc) = sop.sign()?
             .mode(SignAs::Text)
             .key(&mut Cursor::new(&alice_sec))?
             .data(&mut data)?
