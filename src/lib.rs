@@ -137,6 +137,19 @@ impl<'a> sop::SOP for SQOP<'a> {
 
 struct Version {}
 
+impl Version {
+    fn crypto(&self) -> sop::VersionInfo {
+        let backend = openpgp::crypto::backend();
+        let mut info = backend.splitn(2, ' ');
+        let name = info.next().unwrap_or_default().into();
+        let version = info.next().unwrap_or_default().into();
+        sop::VersionInfo {
+            name,
+            version,
+        }
+    }
+}
+
 impl<'a> sop::Version<'a> for Version {
     fn frontend(&self) -> Result<sop::VersionInfo> {
         Ok(sop::VersionInfo {
@@ -150,6 +163,14 @@ impl<'a> sop::Version<'a> for Version {
             name: "Sequoia".into(),
             version: openpgp::VERSION.into(),
         })
+    }
+
+    fn extended(&self) -> Result<Vec<VersionInfo>> {
+        Ok(vec![
+            self.frontend()?,
+            self.crypto(),
+            self.backend()?,
+        ])
     }
 }
 
