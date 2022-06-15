@@ -32,6 +32,8 @@ use std::{
     time::SystemTime,
 };
 
+use buffered_reader::*;
+
 use sequoia_openpgp as openpgp;
 use openpgp::{
     armor,
@@ -944,73 +946,52 @@ impl<'a> sop::Ready for ArmorReady<'a> {
                 -> Result<()> {
         let _ = self.armor.sqop;
 
-        enum Labeled<'a> {
-            NotYet(&'a mut (dyn io::Write + Send + Sync)),
-            Labeled(Message<'a>),
-        }
-        use Labeled::*;
-
-        impl<'a> Labeled<'a> {
-            fn expect(self) -> Message<'a> {
-                match self {
-                    NotYet(_) =>
-                        panic!("Labeled::expect() called on NotYet"),
-                    Labeled(m) => m,
-                }
-            }
-        }
+        let mut source = Generic::new(self.data, None).as_boxed();
 
         fn make<'a>(sink: &'a mut (dyn io::Write + Send + Sync),
                     kind: armor::Kind)
-                    -> Result<Labeled<'a>>
+                    -> Result<Message>
         {
             let m = Message::new(sink);
-            Armorer::new(m).kind(kind).build().map(|m| Labeled(m))
-                .map_err(sop_error)
+            Armorer::new(m).kind(kind).build().map_err(sop_error)
         }
 
         // We make no effort to verify the packet structure.
-        let mut ppr = PacketParser::from_reader(self.data).map_err(sop_error)?;
-        let mut sink = Some(match self.armor.label {
-            ArmorLabel::Auto => NotYet(sink),
+        let mut sink = match self.armor.label {
+            ArmorLabel::Auto => {
+                source = Dup::new(source).as_boxed();
+                let ppr = PacketParser::from_reader(&mut source)
+                    .map_err(sop_error)?;
+                let kind =
+                    if let PacketParserResult::Some(pp) = &ppr {
+                        // Autodetect using the first packet.
+                        match &pp.packet {
+                        Packet::Signature(_) =>
+                            armor::Kind::Signature,
+                        Packet::SecretKey(_) =>
+                            armor::Kind::SecretKey,
+                        Packet::PublicKey(_) =>
+                            armor::Kind::PublicKey,
+                        Packet::PKESK(_) | Packet::SKESK(_) =>
+                            armor::Kind::Message,
+                            _ => return Err(Error::BadData),
+                        }
+                    } else {
+                        return Err(Error::BadData);
+                    };
+                drop(ppr);
+                source = source.into_inner()
+                    .expect("the Dup to be popped off");
+                make(sink, kind)?
+            },
             ArmorLabel::Sig => make(sink, armor::Kind::Signature)?,
             ArmorLabel::Key => make(sink, armor::Kind::SecretKey)?,
             ArmorLabel::Cert => make(sink, armor::Kind::PublicKey)?,
             ArmorLabel::Message => make(sink, armor::Kind::Message)?,
-        });
+        };
 
-        while let PacketParserResult::Some(pp) = ppr {
-            let (packet, tmp) = pp.next().map_err(sop_error)?;
-            ppr = tmp;
-
-            let s = sink.take().expect("we always put it back");
-            sink = Some(match s {
-                NotYet(s) => {
-                    // Autodetect using the first packet.
-                    match packet {
-                        Packet::Signature(_) =>
-                            make(s, armor::Kind::Signature)?,
-                        Packet::SecretKey(_) =>
-                            make(s, armor::Kind::SecretKey)?,
-                        Packet::PublicKey(_) =>
-                            make(s, armor::Kind::PublicKey)?,
-                        Packet::PKESK(_) | Packet::SKESK(_) =>
-                            make(s, armor::Kind::Message)?,
-                        _ => return Err(Error::BadData),
-                    }
-                },
-                Labeled(m) => Labeled(m),
-            });
-
-            match &mut sink {
-                Some(Labeled(m)) => packet.serialize(m).map_err(sop_error)?,
-                _ => unreachable!(
-                    "we always put it back, detected at this point"),
-            }
-        }
-
-        sink.expect("we always put it back").expect().finalize()
-            .map_err(sop_error)?;
+        std::io::copy(&mut source, &mut sink)?;
+        sink.finalize().map_err(sop_error)?;
         Ok(())
     }
 }
@@ -1746,7 +1727,7 @@ fn sop_error(e: anyhow::Error) -> sop::Error {
 
     if let Some(e) = e.downcast_ref::<openpgp::Error>() {
         use openpgp::Error::*;
-        return match e {
+        return match dbg!(e) {
             InvalidArgument(_) => sop::Error::BadData,
             InvalidOperation(_) => sop::Error::BadData,
             MalformedPacket(_) => sop::Error::BadData,

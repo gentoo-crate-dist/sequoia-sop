@@ -19,6 +19,7 @@ gitlab = { repository = "sequoia-pgp/sequoia-sop" }
 maintenance = { status = "actively-developed" }
 
 [dependencies]
+buffered-reader = "1"
 sop = "0.4"
 sequoia-openpgp = { version = "1.9", default-features = false }
 anyhow = "1.0.18"
