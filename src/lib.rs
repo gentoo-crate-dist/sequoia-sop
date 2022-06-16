@@ -1029,12 +1029,8 @@ impl sop::Ready for DearmorReady<'_> {
         let _ = self.dearmor.sqop;
 
         // We make no effort to verify the packet structure.
-        let mut ppr = PacketParser::from_reader(self.data).map_err(sop_error)?;
-        while let PacketParserResult::Some(pp) = ppr {
-            let (packet, tmp) = pp.next().map_err(sop_error)?;
-            ppr = tmp;
-            packet.serialize(sink).map_err(sop_error)?;
-        }
+        let mut r = openpgp::armor::Reader::from_reader(self.data, None);
+        std::io::copy(&mut r, sink)?;
         Ok(())
     }
 }
