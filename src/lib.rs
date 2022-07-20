@@ -1304,8 +1304,7 @@ impl<'a> sop::Ready for InlineSignReady<'a> {
               || matches!(self.inline_sign.mode, InlineSignAs::ClearSigned))
         {
             message =
-                Armorer::new(message).kind(armor::Kind::Signature).build()
-                .map_err(sop_error)?;
+                Armorer::new(message).build().map_err(sop_error)?;
         }
 
         let mut signers = self.inline_sign.sign.make_signers()?;
