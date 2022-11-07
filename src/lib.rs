@@ -1722,7 +1722,7 @@ fn sop_error(e: anyhow::Error) -> sop::Error {
 
     if let Some(e) = e.downcast_ref::<openpgp::Error>() {
         use openpgp::Error::*;
-        return match dbg!(e) {
+        return match e {
             InvalidArgument(_) => sop::Error::BadData,
             InvalidOperation(_) => sop::Error::BadData,
             MalformedPacket(_) => sop::Error::BadData,
