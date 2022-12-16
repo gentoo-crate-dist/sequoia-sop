@@ -948,12 +948,30 @@ impl<'a> sop::Ready for ArmorReady<'a> {
 
         let mut source = Generic::new(self.data, None).as_boxed();
 
+        // Peek at the data to see if it is already armored.
+        let armored =
+            source.data(1)?.get(0).map(|b| b & 0x80 == 0).unwrap_or(false);
+
+        // If so, dearmor, and extract the headers.
+        let mut headers: Vec<(String, String)> = vec![];
+        if armored {
+            let mut r = armor::Reader::from_reader(
+                source, armor::ReaderMode::Tolerant(None));
+            headers = r.headers()?.iter().cloned().collect();
+            source = Box::new(Adapter::new(r));
+        }
+
         fn make<'a>(sink: &'a mut (dyn io::Write + Send + Sync),
-                    kind: armor::Kind)
+                    kind: armor::Kind,
+                    headers: Vec<(String, String)>)
                     -> Result<Message>
         {
             let m = Message::new(sink);
-            Armorer::new(m).kind(kind).build().map_err(sop_error)
+            let mut a = Armorer::new(m).kind(kind);
+            for (k, v) in headers {
+                a = a.add_header(k, v);
+            }
+            a.build().map_err(sop_error)
         }
 
         // We make no effort to verify the packet structure.
@@ -982,12 +1000,12 @@ impl<'a> sop::Ready for ArmorReady<'a> {
                 drop(ppr);
                 source = source.into_inner()
                     .expect("the Dup to be popped off");
-                make(sink, kind)?
+                make(sink, kind, headers)?
             },
-            ArmorLabel::Sig => make(sink, armor::Kind::Signature)?,
-            ArmorLabel::Key => make(sink, armor::Kind::SecretKey)?,
-            ArmorLabel::Cert => make(sink, armor::Kind::PublicKey)?,
-            ArmorLabel::Message => make(sink, armor::Kind::Message)?,
+            ArmorLabel::Sig => make(sink, armor::Kind::Signature, headers)?,
+            ArmorLabel::Key => make(sink, armor::Kind::SecretKey, headers)?,
+            ArmorLabel::Cert => make(sink, armor::Kind::PublicKey, headers)?,
+            ArmorLabel::Message => make(sink, armor::Kind::Message, headers)?,
         };
 
         std::io::copy(&mut source, &mut sink)?;
