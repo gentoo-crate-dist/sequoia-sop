@@ -79,14 +79,8 @@ windows-gnu:
     - win2019
   stage: build
   image: registry.gitlab.com/sequoia-pgp/build-docker-image/windows-gnu
-  # This job takes ~20 minutes to run, let's only execute it manually or for
-  # scheduled builds, otherwise this will stall MRs often not related to Windows
-  only:
-    - /windows/i # refs containing 'windows' keyword
-    - tags
-    - web
-    - scheduled
   before_script:
+    - rustup default stable
     - clang -v
     - rustc --version --verbose
     - cargo --version
@@ -103,6 +97,7 @@ windows-msvc:
   stage: build
   image: registry.gitlab.com/sequoia-pgp/build-docker-image/windows-msvc
   before_script:
+    - rustup default stable
     - rustc --version --verbose
     - cargo --version
   script:
