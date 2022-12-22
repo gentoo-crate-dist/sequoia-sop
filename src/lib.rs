@@ -1763,7 +1763,7 @@ fn sop_error(e: anyhow::Error) -> sop::Error {
             BadSignature(_) => sop::Error::BadData,
             MalformedMessage(_) => sop::Error::BadData,
             MalformedCert(_) => sop::Error::BadData,
-            UnsupportedCert(_) => sop::Error::BadData,
+            UnsupportedCert2(_, _) => sop::Error::BadData,
             Expired(_) => sop::Error::BadData,
             NotYetLive(_) => sop::Error::BadData,
             NoBindingSignature(_) => sop::Error::BadData,
