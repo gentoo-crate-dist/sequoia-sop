@@ -24,7 +24,7 @@ bookworm:
     - codespell
 
   script:
-    - cargo test
+    - cargo test --features cli
     - if ! git diff --quiet Cargo.lock ; then echo "Cargo.lock changed.  Please add the change to the corresponding commit." ; false ; fi
 
   variables:
@@ -51,7 +51,7 @@ all_commits:
     - git config user.name "C.I. McTestface"
     - git config user.email "ci.mctestface@example.com"
     - git fetch origin main
-    - if ! git rebase --exec "echo ===; echo ===; echo ===; git log -n 1; cargo test" origin/main; then git rebase --abort; false; fi
+    - if ! git rebase --exec "echo ===; echo ===; echo ===; git log -n 1; cargo test --features cli" origin/main; then git rebase --abort; false; fi
 
   variables:
     CARGO_TARGET_DIR: $CI_PROJECT_DIR/../target.$CI_CONCURRENT_ID.all_commits
@@ -85,7 +85,7 @@ windows-gnu:
     - rustc --version --verbose
     - cargo --version
   script:
-    - cargo test --no-default-features --features crypto-cng,compression
+    - cargo test --no-default-features --features cli,crypto-cng,compression
   after_script: []
   variables:
     CFLAGS: "" # Silence some C warnings when compiling under Windows
@@ -101,7 +101,7 @@ windows-msvc:
     - rustc --version --verbose
     - cargo --version
   script:
-    - cargo test --no-default-features --features crypto-cng,compression
+    - cargo test --no-default-features --features cli,crypto-cng,compression
   after_script: []
   variables:
     CFLAGS: "" # Silence some C warnings when compiling with MSVC
