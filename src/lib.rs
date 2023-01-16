@@ -1745,6 +1745,11 @@ fn print_error_chain(sink: &mut dyn io::Write, err: &anyhow::Error)
 /// XXX: This is a bit of a friction point.  We likely need to improve
 /// the SOP spec a little.
 fn sop_error(e: anyhow::Error) -> sop::Error {
+    let e = match e.downcast::<sop::Error>() {
+        Ok(e) => return e,
+        Err(e) => e,
+    };
+
     let e = match e.downcast::<io::Error>() {
         Ok(e) => return e.into(),
         Err(e) => e,
