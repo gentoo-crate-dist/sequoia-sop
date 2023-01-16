@@ -1046,9 +1046,21 @@ impl sop::Ready for DearmorReady<'_> {
                 -> Result<()> {
         let _ = self.dearmor.sqop;
 
-        // We make no effort to verify the packet structure.
-        let mut r = openpgp::armor::Reader::from_reader(self.data, None);
-        std::io::copy(&mut r, sink)?;
+        // Peek at the data to see if it is already armored.  We make
+        // no effort to verify the packet structure.
+        let mut source = Generic::new(self.data, None).as_boxed();
+        let armored =
+            source.data(1)?.get(0).map(|b| b & 0x80 == 0).unwrap_or(false);
+
+        if armored {
+            // XXX: Give the buffered reader to the armor::Reader once
+            // that is possible.
+            let mut r = openpgp::armor::Reader::from_reader(source, None);
+            std::io::copy(&mut r, sink)?;
+        } else {
+            // Use BufferedReader::copy once available.
+            std::io::copy(&mut source, sink)?;
+        }
         Ok(())
     }
 }
