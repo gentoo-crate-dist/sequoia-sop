@@ -884,7 +884,7 @@ impl<'a> sop::ReadyWithResult<(Option<sop::SessionKey>, Vec<sop::Verification>)>
             } else {
                 Box::new(io::sink())
             },
-            0,
+            if self.decrypt.verify.certs.is_empty() { 0 } else { 1 },
             self.decrypt.verify.not_before,
             self.decrypt.verify.not_after,
             self.decrypt.verify.certs);
