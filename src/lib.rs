@@ -577,6 +577,10 @@ struct VerifySignatures<'a> {
 impl sop::VerifySignatures for VerifySignatures<'_> {
     fn data(self: Box<Self>, data: &mut (dyn io::Read + Send + Sync))
             -> Result<Vec<sop::Verification>> {
+        if self.verify.certs.is_empty() {
+            return Err(Error::MissingArg);
+        }
+
         let helper = VHelper::new(
             if self.verify.verbose {
                 Box::new(io::stderr())
