@@ -738,6 +738,12 @@ impl<'a> sop::Ready for EncryptReady<'a> {
     fn write_to(self: Box<Self>, sink: &mut (dyn io::Write + Send + Sync))
                 -> Result<()>
     {
+        if self.encrypt.recipients.is_empty()
+            && self.encrypt.passwords.is_empty()
+        {
+            return Err(Error::MissingArg);
+        }
+
         let mut message = Message::new(sink);
         if ! self.encrypt.sign.no_armor {
             message = Armorer::new(message).build().map_err(sop_error)?;
