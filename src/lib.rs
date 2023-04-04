@@ -180,15 +180,24 @@ struct GenerateKey<'a> {
     #[allow(dead_code)]
     sqop: &'a SQOP<'a>,
     no_armor: bool,
+    profile: &'static str,
     with_key_password: Option<Password>,
     userids: Vec<String>,
 }
 
 impl<'a> GenerateKey<'a> {
+    const PROFILE_EDDSA: &'static str = "draft-koch-eddsa-for-openpgp-00";
+    const PROFILE_RFC4880: &'static str = "rfc4880";
+    const PROFILES: &'static [(&'static str, &'static str)] = &[
+        (Self::PROFILE_EDDSA, "use EdDSA & ECDH over Cv25519"),
+        (Self::PROFILE_RFC4880, "use algorithms from RFC 4880"),
+    ];
+
     fn new(sqop: &'a SQOP) -> Result<Box<dyn sop::GenerateKey<'a> + 'a>> {
         Ok(Box::new(GenerateKey {
             sqop,
             no_armor: Default::default(),
+            profile: Self::PROFILE_EDDSA,
             with_key_password: Default::default(),
             userids: Default::default(),
         }))
@@ -199,6 +208,22 @@ impl<'a> sop::GenerateKey<'a> for GenerateKey<'a> {
     fn no_armor(mut self: Box<Self>) -> Box<dyn sop::GenerateKey<'a> + 'a> {
         self.no_armor = true;
         self
+    }
+
+    fn list_profiles(&self) -> Vec<(String, String)> {
+        Self::PROFILES.iter()
+            .map(|(p, d)| (p.to_string(), d.to_string()))
+            .collect()
+    }
+
+    fn profile(mut self: Box<Self>, profile: &str)
+               -> Result<Box<dyn sop::GenerateKey<'a> + 'a>> {
+        self.profile = match profile {
+            Self::PROFILE_EDDSA | "default" => Self::PROFILE_EDDSA,
+            Self::PROFILE_RFC4880 => Self::PROFILE_RFC4880,
+            _ => return Err(Error::UnsupportedProfile),
+        };
+        Ok(self)
     }
 
     fn with_key_password(mut self: Box<Self>, password: Password)
@@ -229,6 +254,13 @@ impl sop::Ready for GenerateKey<'_> {
 
         let mut builder = CertBuilder::general_purpose(
             None, primary_uid);
+
+        builder = builder.set_cipher_suite(match self.profile {
+            Self::PROFILE_EDDSA => CipherSuite::Cv25519,
+            Self::PROFILE_RFC4880 => CipherSuite::RSA3k,
+            _ => return Err(Error::UnsupportedProfile),
+        });
+
         for u in self.userids {
             builder = builder.add_userid(u);
         }
@@ -603,6 +635,7 @@ impl sop::VerifySignatures for VerifySignatures<'_> {
 
 struct Encrypt<'a> {
     sign: Sign<'a>,
+    profile: &'static str,
     mode: EncryptAs,
     symmetric_algos: Vec<SymmetricAlgorithm>,
     recipients: Vec<Key<key::PublicParts, key::UnspecifiedRole>>,
@@ -610,9 +643,15 @@ struct Encrypt<'a> {
 }
 
 impl<'a> Encrypt<'a> {
+    const PROFILE_RFC4880: &'static str = "rfc4880";
+    const PROFILES: &'static [(&'static str, &'static str)] = &[
+        (Self::PROFILE_RFC4880, "use algorithms from RFC 4880"),
+    ];
+
     fn new(sqop: &'a SQOP) -> Result<Box<dyn sop::Encrypt<'a> + 'a>> {
         Ok(Box::new(Encrypt {
             sign: Sign::unboxed(sqop),
+            profile: Self::PROFILE_RFC4880,
             mode: Default::default(),
             symmetric_algos: [
                 SymmetricAlgorithm::AES256,
@@ -671,6 +710,21 @@ impl<'a> sop::Encrypt<'a> for Encrypt<'a> {
     fn no_armor(mut self: Box<Self>) -> Box<dyn sop::Encrypt<'a> + 'a> {
         self.sign.no_armor = true;
         self
+    }
+
+    fn list_profiles(&self) -> Vec<(String, String)> {
+        Self::PROFILES.iter()
+            .map(|(p, d)| (p.to_string(), d.to_string()))
+            .collect()
+    }
+
+    fn profile(mut self: Box<Self>, profile: &str)
+               -> Result<Box<dyn sop::Encrypt<'a> + 'a>> {
+        self.profile = match profile {
+            Self::PROFILE_RFC4880 | "default" => Self::PROFILE_RFC4880,
+            _ => return Err(Error::UnsupportedProfile),
+        };
+        Ok(self)
     }
 
     fn mode(mut self: Box<Self>, mode: EncryptAs) -> Box<dyn sop::Encrypt<'a> + 'a> {
@@ -748,6 +802,8 @@ impl<'a> sop::Ready for EncryptReady<'a> {
         if ! self.encrypt.sign.no_armor {
             message = Armorer::new(message).build().map_err(sop_error)?;
         }
+
+        // XXX: Honor self.profile once we have more than one.
 
         // Encrypt the message.
         let mut message =
@@ -1462,6 +1518,11 @@ impl VerificationHelper for VHelper {
                                     t,
                                     ka.fingerprint(),
                                     ka.cert().fingerprint(),
+                                    match sig.typ() {
+                                        SignatureType::Text =>
+                                            SignatureMode::Text,
+                                        _ => SignatureMode::Binary,
+                                    },
                                     None)?);
                             },
                             Err(MalformedSignature { error, .. }) => {
