@@ -1220,7 +1220,6 @@ name = "sequoia-sop"
 version = "0.28.0"
 dependencies = [
  "anyhow",
- "buffered-reader",
  "sequoia-openpgp",
  "sop",
 ]

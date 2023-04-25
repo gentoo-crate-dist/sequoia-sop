@@ -32,8 +32,6 @@ use std::{
     time::SystemTime,
 };
 
-use buffered_reader::*;
-
 use sequoia_openpgp as openpgp;
 use openpgp::{
     armor,
@@ -42,6 +40,7 @@ use openpgp::{
         Parse,
         PacketParser,
         PacketParserResult,
+        buffered_reader::*,
         stream::*,
     },
     packet::prelude::*,
