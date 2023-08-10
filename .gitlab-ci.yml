@@ -19,7 +19,7 @@ bookworm:
   tags:
     - linux
   stage: build
-  image: registry.gitlab.com/sequoia-pgp/build-docker-image/bookworm:latest
+  image: 192.168.122.1:5000/sequoia-pgp/build-docker-image/bookworm:latest
   dependencies:
     - codespell
 
@@ -62,7 +62,7 @@ codespell:
   tags:
     - linux
   stage: pre-check
-  image: registry.gitlab.com/sequoia-pgp/build-docker-image/bookworm:latest
+  image: 192.168.122.1:5000/sequoia-pgp/build-docker-image/bookworm:latest
 
   before_script:
     - codespell --version
@@ -78,7 +78,7 @@ windows-gnu:
     - win
     - win2019
   stage: build
-  image: registry.gitlab.com/sequoia-pgp/build-docker-image/windows-gnu
+  image: 192.168.122.1:5000/sequoia-pgp/build-docker-image/windows-gnu
   before_script:
     - rustup default stable
     - clang -v
@@ -95,7 +95,7 @@ windows-msvc:
     - win
     - win2019
   stage: build
-  image: registry.gitlab.com/sequoia-pgp/build-docker-image/windows-msvc
+  image: 192.168.122.1:5000/sequoia-pgp/build-docker-image/windows-msvc
   before_script:
     - rustup default stable
     - rustc --version --verbose
