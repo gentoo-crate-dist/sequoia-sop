@@ -1,0 +1,41 @@
+[package]
+name = "sequoia-sop-c"
+description = "An implementation of the Stateless OpenPGP Interface using Sequoia"
+version = "0.28.0"
+authors = [
+    "Justus Winter <justus@sequoia-pgp.org>",
+]
+documentation = "https://docs.rs/sequoia-sop"
+homepage = "https://sequoia-pgp.org/"
+repository = "https://gitlab.com/sequoia-pgp/sequoia-sop"
+readme = "README.md"
+keywords = ["cryptography", "openpgp", "pgp", "sop", "stateless-openpgp"]
+categories = ["cryptography", "command-line-utilities"]
+license = "GPL-2.0-or-later"
+edition = "2021"
+
+[badges]
+gitlab = { repository = "sequoia-pgp/sequoia-sop" }
+maintenance = { status = "actively-developed" }
+
+[dependencies]
+sop = { version = "0.7", features = ["clib"] }
+sequoia-sop = { path = ".." }
+
+[lib]
+path = "clib.rs"
+crate-type = ["cdylib"]
+
+[features]
+default = ["sequoia-sop/default"]
+crypto-nettle = ["sequoia-sop/crypto-nettle"]
+crypto-openssl = ["sequoia-sop/crypto-openssl"]
+crypto-botan = ["sequoia-sop/crypto-botan"]
+crypto-botan2 = ["sequoia-sop/crypto-botan2"]
+crypto-cng = ["sequoia-sop/crypto-cng"]
+compression = ["sequoia-sop/compression"]
+compression-deflate = ["sequoia-sop/compression-deflate"]
+compression-bzip2 = ["sequoia-sop/compression-bzip2"]
+
+[patch.crates-io]
+sop = { path = "../../sop-rs" }
