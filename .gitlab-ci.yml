@@ -70,7 +70,7 @@ codespell:
     - >
       codespell --disable-colors
       -L "crate,ede,iff,mut,nd,te,uint,KeyServer,keyserver,Keyserver,keyservers,Keyservers,keypair,keypairs,KeyPair,fpr,dedup"
-      -S "*.bin,*.gpg,*.pgp,./.git,data,highlight.js,*/target,Makefile"
+      -S "Cargo.lock,*.bin,*.gpg,*.pgp,./.git,data,highlight.js,*/target,Makefile"
   after_script: []
 
 windows-msvc:
