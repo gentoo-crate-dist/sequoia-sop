@@ -15,11 +15,11 @@ after_script:
   - du -sh $CARGO_TARGET_DIR
   - du -sh $CARGO_HOME
 
-bookworm:
+trixie:
   tags:
     - linux
   stage: build
-  image: 192.168.122.1:5000/sequoia-pgp/build-docker-image/bookworm:latest
+  image: 192.168.122.1:5000/sequoia-pgp/build-docker-image/trixie:latest
   dependencies:
     - codespell
 
@@ -28,14 +28,14 @@ bookworm:
     - if ! git diff --quiet Cargo.lock ; then echo "Cargo.lock changed.  Please add the change to the corresponding commit." ; false ; fi
 
   variables:
-    CARGO_TARGET_DIR: $CI_PROJECT_DIR/../target.$CI_CONCURRENT_ID.bookworm
+    CARGO_TARGET_DIR: $CI_PROJECT_DIR/../target.$CI_CONCURRENT_ID.trixie
     RUSTFLAGS: -D warnings -A unused-parens
 
 all_commits:
   # Test each commit up to main, to facilitate bisecting.
   stage: test
   image: rust:1-slim-buster
-  needs: ["bookworm"]
+  needs: ["trixie"]
 
   before_script:
     - apt update -y -qq
@@ -62,7 +62,7 @@ codespell:
   tags:
     - linux
   stage: pre-check
-  image: 192.168.122.1:5000/sequoia-pgp/build-docker-image/bookworm:latest
+  image: 192.168.122.1:5000/sequoia-pgp/build-docker-image/trixie:latest
 
   before_script:
     - codespell --version
