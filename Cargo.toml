@@ -19,12 +19,12 @@ gitlab = { repository = "sequoia-pgp/sequoia-sop" }
 maintenance = { status = "actively-developed" }
 
 [dependencies]
-sop = "0.5"
+sop = "0.6"
 sequoia-openpgp = { version = "1.16", default-features = false }
 anyhow = "1.0.18"
 
 [build-dependencies]
-sop = "0.5"
+sop = "0.6"
 
 [lib]
 

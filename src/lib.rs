@@ -11,14 +11,14 @@
 //!
 //! ```rust
 //! # fn main() -> sop::Result<()> {
-//! use sequoia_sop::*;
+//! use sequoia_sop::{*, sop::*};
 //!
 //! let sop = SQOP::default();
 //!
 //! let alice_sec = sop.generate_key()?
 //!     .userid("Alice Lovelace <alice@openpgp.example>")
 //!     .generate()?
-//!     .to_vec()?;
+//!     .to_vec(true)?;
 //! assert!(alice_sec.starts_with(b"-----BEGIN PGP PRIVATE KEY BLOCK-----"));
 //! # Ok(()) }
 //! ```
@@ -69,11 +69,121 @@ pub use sop::{self, SOP};
 
 use sop::*;
 
+/// A collection of certs.
+pub struct Certs {
+    certs: Vec<openpgp::Cert>,
+}
+
+impl<'s> sop::Import<'s, SQOP<'s>> for Certs {
+    fn import(_sop: &SQOP, source: &mut (dyn io::Read + Send + Sync))
+              -> Result<Self>
+    where
+        Self: Sized,
+    {
+        Ok(CertParser::from_reader(source).map_err(sop_error)?
+            .collect::<openpgp::Result<Vec<openpgp::Cert>>>()
+            .map_err(sop_error)?
+            .into())
+    }
+}
+
+impl From<Vec<openpgp::Cert>> for Certs {
+    fn from(certs: Vec<openpgp::Cert>) -> Self {
+        Certs {
+            certs,
+        }
+    }
+}
+
+impl sop::Export for Certs {
+    fn export(&self, armored: bool, sink: &mut (dyn io::Write + Send + Sync))
+              -> Result<()>
+    {
+        if self.certs.len() == 1 {
+            let cert = &self.certs[0];
+            if armored {
+                cert.armored().serialize(sink).map_err(sop_error)?;
+            } else {
+                cert.serialize(sink).map_err(sop_error)?;
+            }
+        } else {
+            if armored {
+                let mut armorer =
+                    armor::Writer::new(sink, armor::Kind::PublicKey)?;
+                for cert in &self.certs {
+                    cert.serialize(&mut armorer).map_err(sop_error)?;
+                }
+                armorer.finalize()?;
+            } else {
+                for cert in &self.certs {
+                    cert.serialize(sink).map_err(sop_error)?;
+                }
+            }
+        }
+        Ok(())
+    }
+}
+
+/// A collection of keys.
+pub struct Keys {
+    keys: Vec<openpgp::Cert>,
+}
+
+impl From<Vec<openpgp::Cert>> for Keys {
+    fn from(keys: Vec<openpgp::Cert>) -> Self {
+        Keys {
+            keys,
+        }
+    }
+}
+
+impl<'s> sop::Import<'s, SQOP<'s>> for Keys {
+    fn import(_sop: &SQOP, source: &mut (dyn io::Read + Send + Sync))
+              -> Result<Self>
+    where
+        Self: Sized,
+    {
+        Ok(CertParser::from_reader(source).map_err(sop_error)?
+            .collect::<openpgp::Result<Vec<openpgp::Cert>>>()
+            .map_err(sop_error)?
+            .into())
+    }
+}
+
+impl sop::Export for Keys {
+    fn export(&self, armored: bool, sink: &mut (dyn io::Write + Send + Sync))
+              -> Result<()>
+    {
+        if self.keys.len() == 1 {
+            let key = &self.keys[0];
+            if armored {
+                key.as_tsk().armored().serialize(sink).map_err(sop_error)?;
+            } else {
+                key.as_tsk().serialize(sink).map_err(sop_error)?;
+            }
+        } else {
+            if armored {
+                let mut armorer =
+                    armor::Writer::new(sink, armor::Kind::SecretKey)?;
+                for key in &self.keys {
+                    key.as_tsk().serialize(&mut armorer).map_err(sop_error)?;
+                }
+                armorer.finalize()?;
+            } else {
+                for key in &self.keys {
+                    key.as_tsk().serialize(sink).map_err(sop_error)?;
+                }
+            }
+        }
+        Ok(())
+    }
+}
+
 /// [`SOP`] implementation based on [Sequoia PGP].
 ///
 ///   [Sequoia PGP]: https://sequoia-pgp.org
-pub struct SQOP<'a> {
-    policy: &'a dyn openpgp::policy::Policy,
+pub struct SQOP<'s> {
+    policy: &'s dyn openpgp::policy::Policy,
 }
 
 impl Default for SQOP<'_> {
@@ -83,75 +193,91 @@ impl Default for SQOP<'_> {
     }
 }
 
-impl<'a> SQOP<'a> {
+impl<'s> SQOP<'s> {
     /// Creates a [`sop::SOP`] implementation with an explicit
     /// [`sequoia_openpgp::policy::Policy`].
     ///
     /// To use the default
     /// [`sequoia_openpgp::policy::StandardPolicy`], use
     /// [`SQOP::default`].
-    pub fn with_policy(policy: &'a dyn Policy) -> Self {
+    pub fn with_policy(policy: &'s dyn Policy) -> Self {
         SQOP {
             policy,
         }
     }
 }
 
-impl<'a> sop::SOP for SQOP<'a> {
-    fn version<'b>(&'b self) -> Result<Box<dyn sop::Version + 'b>> {
+impl<'s> sop::SOP<'s> for SQOP<'s> {
+    type Keys = Keys;
+    type Certs = Certs;
+
+    fn version(&'s self) -> Result<Box<dyn sop::Version + 's>> {
         Ok(Box::new(Version {}))
     }
-    fn generate_key<'b>(&'b self) -> Result<Box<dyn sop::GenerateKey + 'b>> {
+    fn generate_key(&'s self)
+        -> Result<Box<dyn sop::GenerateKey<SQOP<'s>, Keys> + 's>>
+    {
         GenerateKey::new(self)
     }
-    fn extract_cert<'b>(&'b self) -> Result<Box<dyn sop::ExtractCert + 'b>> {
+    fn change_key_password(&'s self)
+        -> Result<Box<dyn sop::ChangeKeyPassword<SQOP<'s>, Keys> + 's>>
+    {
+        ChangeKeyPassword::new(self)
+    }
+    fn revoke_key(&'s self)
+        -> Result<Box<dyn sop::RevokeKey<SQOP<'s>, Keys> + 's>>
+    {
+        RevokeKey::new(self)
+    }
+    fn extract_cert(&'s self)
+        -> Result<Box<dyn sop::ExtractCert<SQOP<'s>, Certs, Keys> + 's>>
+    {
         ExtractCert::new(self)
     }
-    fn sign<'b>(&'b self) -> Result<Box<dyn sop::Sign + 'b>> {
+    fn sign(&'s self)
+        -> Result<Box<dyn sop::Sign<SQOP<'s>, Keys> + 's>>
+    {
         Sign::new(self)
     }
-    fn verify<'b>(&'b self) -> Result<Box<dyn sop::Verify + 'b>> {
+    fn verify(&'s self)
+        -> Result<Box<dyn sop::Verify<SQOP<'s>, Certs> + 's>>
+    {
         Verify::new(self)
     }
-    fn encrypt<'b>(&'b self) -> Result<Box<dyn sop::Encrypt + 'b>> {
+    fn encrypt(&'s self)
+        -> Result<Box<dyn sop::Encrypt<SQOP<'s>, Certs, Keys> + 's>> {
         Encrypt::new(self)
     }
-    fn decrypt<'b>(&'b self) -> Result<Box<dyn sop::Decrypt + 'b>> {
+    fn decrypt(&'s self)
+        -> Result<Box<dyn sop::Decrypt<SQOP<'s>, Certs, Keys> + 's>> {
         Decrypt::new(self)
     }
-    fn armor<'b>(&'b self) -> Result<Box<dyn sop::Armor + 'b>> {
+    fn armor(&'s self) -> Result<Box<dyn sop::Armor + 's>> {
         Armor::new(self)
     }
-    fn dearmor<'b>(&'b self) -> Result<Box<dyn sop::Dearmor + 'b>> {
+    fn dearmor(&'s self) -> Result<Box<dyn sop::Dearmor + 's>> {
         Dearmor::new(self)
     }
-    fn inline_detach<'b>(&'b self) -> Result<Box<dyn sop::InlineDetach + 'b>> {
+    fn inline_detach(&'s self)
+        -> Result<Box<dyn sop::InlineDetach + 's>>
+    {
         InlineDetach::new(self)
     }
-    fn inline_verify<'b>(&'b self) -> Result<Box<dyn sop::InlineVerify + 'b>> {
+    fn inline_verify(&'s self)
+        -> Result<Box<dyn sop::InlineVerify<SQOP<'s>, Certs> + 's>>
+    {
         InlineVerify::new(self)
     }
-    fn inline_sign<'b>(&'b self) -> Result<Box<dyn sop::InlineSign + 'b>> {
+    fn inline_sign(&'s self)
+        -> Result<Box<dyn sop::InlineSign<SQOP<'s>, Keys> + 's>>
+    {
         InlineSign::new(self)
     }
 }
 
 struct Version {}
 
-impl Version {
-    fn crypto(&self) -> sop::VersionInfo {
-        let backend = openpgp::crypto::backend();
-        let mut info = backend.splitn(2, ' ');
-        let name = info.next().unwrap_or_default().into();
-        let version = info.next().unwrap_or_default().into();
-        sop::VersionInfo {
-            name,
-            version,
-        }
-    }
-}
-
-impl<'a> sop::Version<'a> for Version {
+impl sop::Version<'_> for Version {
     fn frontend(&self) -> Result<sop::VersionInfo> {
         Ok(sop::VersionInfo {
             name: "sqop".into(),
@@ -166,25 +292,24 @@ impl<'a> sop::Version<'a> for Version {
         })
     }
 
-    fn extended(&self) -> Result<Vec<VersionInfo>> {
+    fn extended(&self) -> Result<String> {
         Ok(vec![
-            self.frontend()?,
-            self.crypto(),
-            self.backend()?,
-        ])
+            openpgp::crypto::backend(),
+            format!("Sequoia {}", openpgp::VERSION),
+        ].join("\n"))
     }
 }
 
-struct GenerateKey<'a> {
+struct GenerateKey<'s> {
     #[allow(dead_code)]
-    sqop: &'a SQOP<'a>,
-    no_armor: bool,
+    sqop: &'s SQOP<'s>,
     profile: &'static str,
+    signing_only: bool,
     with_key_password: Option<Password>,
     userids: Vec<String>,
 }
 
-impl<'a> GenerateKey<'a> {
+impl<'s> GenerateKey<'s> {
     const PROFILE_EDDSA: &'static str = "draft-koch-eddsa-for-openpgp-00";
     const PROFILE_RFC4880: &'static str = "rfc4880";
     const PROFILES: &'static [(&'static str, &'static str)] = &[
@@ -192,23 +317,18 @@ impl<'a> GenerateKey<'a> {
         (Self::PROFILE_RFC4880, "use algorithms from RFC 4880"),
     ];
 
-    fn new(sqop: &'a SQOP) -> Result<Box<dyn sop::GenerateKey<'a> + 'a>> {
+    fn new(sqop: &'s SQOP) -> Result<Box<dyn sop::GenerateKey<'s, SQOP<'s>, Keys> + 's>> {
         Ok(Box::new(GenerateKey {
             sqop,
-            no_armor: Default::default(),
             profile: Self::PROFILE_EDDSA,
+            signing_only: false,
             with_key_password: Default::default(),
             userids: Default::default(),
         }))
     }
 }
 
-impl<'a> sop::GenerateKey<'a> for GenerateKey<'a> {
-    fn no_armor(mut self: Box<Self>) -> Box<dyn sop::GenerateKey<'a> + 'a> {
-        self.no_armor = true;
-        self
-    }
-
+impl<'s> sop::GenerateKey<'s, SQOP<'s>, Keys> for GenerateKey<'s> {
     fn list_profiles(&self) -> Vec<(String, String)> {
         Self::PROFILES.iter()
             .map(|(p, d)| (p.to_string(), d.to_string()))
@@ -216,7 +336,7 @@ impl<'a> sop::GenerateKey<'a> for GenerateKey<'a> {
     }
 
     fn profile(mut self: Box<Self>, profile: &str)
-               -> Result<Box<dyn sop::GenerateKey<'a> + 'a>> {
+               -> Result<Box<dyn sop::GenerateKey<'s, SQOP<'s>, Keys> + 's>> {
         self.profile = match profile {
             Self::PROFILE_EDDSA | "default" => Self::PROFILE_EDDSA,
             Self::PROFILE_RFC4880 => Self::PROFILE_RFC4880,
@@ -225,34 +345,34 @@ impl<'a> sop::GenerateKey<'a> for GenerateKey<'a> {
         Ok(self)
     }
 
+    fn signing_only(mut self: Box<Self>) -> Box<dyn sop::GenerateKey<'s, SQOP<'s>, Keys> + 's> {
+        self.signing_only = true;
+        self
+    }
+
     fn with_key_password(mut self: Box<Self>, password: Password)
-                         -> Result<Box<dyn sop::GenerateKey<'a> + 'a>> {
+                         -> Result<Box<dyn sop::GenerateKey<'s, SQOP<'s>, Keys> + 's>> {
         self.with_key_password = Some(password);
         Ok(self)
     }
 
     fn userid(mut self: Box<Self>, userid: &str)
-              -> Box<dyn sop::GenerateKey<'a> + 'a> {
+              -> Box<dyn sop::GenerateKey<'s, SQOP<'s>, Keys> + 's> {
         self.userids.push(userid.into());
         self
     }
 
-    fn generate(self: Box<Self>) -> Result<Box<dyn sop::Ready + 'a>> {
-        Ok(Box::new(*self))
-    }
-}
-
-impl sop::Ready for GenerateKey<'_> {
-    fn write_to(mut self: Box<Self>, sink: &mut (dyn io::Write + Send + Sync))
-                -> Result<()>
-    {
-        let primary_uid = self.userids.get(0).cloned();
-        if primary_uid.is_some() {
-            self.userids.remove(0);
+    fn generate(self: Box<Self>) -> Result<Keys> {
+        let mut builder = CertBuilder::new();
+        builder = builder.add_signing_subkey();
+        if ! self.signing_only {
+            builder = builder.add_subkey(
+                KeyFlags::empty()
+                    .set_storage_encryption()
+                    .set_transport_encryption(),
+                None,
+                None);
         }
-
-        let mut builder = CertBuilder::general_purpose(
-            None, primary_uid);
 
         builder = builder.set_cipher_suite(match self.profile {
             Self::PROFILE_EDDSA => CipherSuite::Cv25519,
@@ -268,79 +388,190 @@ impl sop::Ready for GenerateKey<'_> {
         }
         let (key, _) = builder.generate().map_err(sop_error)?;
 
-        if self.no_armor {
-            key.as_tsk().serialize(sink).map_err(sop_error)?;
-        } else {
-            key.as_tsk().armored().serialize(sink).map_err(sop_error)?;
-        }
-        Ok(())
+        Ok(vec![key].into())
     }
 }
 
-struct ExtractCert<'a> {
+struct ChangeKeyPassword<'s> {
     #[allow(dead_code)]
-    sqop: &'a SQOP<'a>,
-    no_armor: bool,
+    sqop: &'s SQOP<'s>,
+    new_password: Option<openpgp::crypto::Password>,
+    old_password: Vec<openpgp::crypto::Password>,
 }
 
-impl<'a> ExtractCert<'a> {
-    fn new(sqop: &'a SQOP) -> Result<Box<dyn sop::ExtractCert<'a> + 'a>> {
+impl<'s> ChangeKeyPassword<'s> {
+    fn new(sqop: &'s SQOP) -> Result<Box<dyn sop::ChangeKeyPassword<'s, SQOP<'s>, Keys> + 's>> {
+        Ok(Box::new(ChangeKeyPassword {
+            sqop,
+            new_password: None,
+            old_password: vec![],
+        }))
+    }
+}
+
+impl<'s> sop::ChangeKeyPassword<'s, SQOP<'s>, Keys> for ChangeKeyPassword<'s> {
+    fn new_key_password(mut self: Box<Self>, password: Password)
+                        -> Result<Box<dyn sop::ChangeKeyPassword<'s, SQOP<'s>, Keys> + 's>> {
+        self.new_password = Some(password.normalized().into());
+        Ok(self)
+    }
+
+    fn old_key_password(mut self: Box<Self>, password: Password)
+                        -> Result<Box<dyn sop::ChangeKeyPassword<'s, SQOP<'s>, Keys> + 's>> {
+        for p in password.variants() {
+            self.old_password.push(p.into());
+        }
+        Ok(self)
+    }
+
+    fn keys(self: Box<Self>, keys: &Keys) -> Result<Keys> {
+        let mut result = vec![];
+
+        for key in keys.keys.clone() {
+            let fp = key.fingerprint();
+
+            // Extract the key packets, starting with the unencrypted
+            // ones.
+            let mut key_packets =
+                key.keys().unencrypted_secret()
+                .map(|ka| ka.key().clone())
+                .collect::<Vec<_>>();
+
+            // Then the encrypted ones, decrypting them on the way.
+            for locked_key in key.keys().secret()
+                .filter(|ka| ka.secret().is_encrypted())
+                .map(|ka| ka.key())
+            {
+                let mut unlocked = false;
+
+                for p in &self.old_password {
+                    if let Ok(k) = locked_key.clone().decrypt_secret(p) {
+                        key_packets.push(k);
+                        unlocked = true;
+                        break;
+                    }
+                }
+
+                if ! unlocked {
+                    return Err(Error::KeyIsProtected);
+                }
+            }
+
+            // Maybe encrypt them.
+            if let Some(p) = &self.new_password {
+                for k in std::mem::take(&mut key_packets) {
+                    key_packets.push(k.encrypt_secret(&p).map_err(sop_error)?);
+                }
+            }
+
+            // And update the key packets in the cert.
+            let (key, _changed) =
+                key.insert_packets2(
+                    key_packets.into_iter().map(|k| -> openpgp::Packet {
+                        if k.fingerprint() == fp {
+                            k.role_into_primary().into()
+                        } else {
+                            k.role_into_subordinate().into()
+                        }
+                    }))
+                .map_err(sop_error)?;
+
+            result.push(key);
+        }
+
+        Ok(result.into())
+    }
+}
+
+struct RevokeKey<'s> {
+    #[allow(dead_code)]
+    sqop: &'s SQOP<'s>,
+    key_password: Vec<openpgp::crypto::Password>,
+}
+
+impl<'s> RevokeKey<'s> {
+    fn new(sqop: &'s SQOP) -> Result<Box<dyn sop::RevokeKey<'s, SQOP<'s>, Keys> + 's>> {
+        Ok(Box::new(RevokeKey {
+            sqop,
+            key_password: vec![],
+        }))
+    }
+}
+
+impl<'s> sop::RevokeKey<'s, SQOP<'s>, Keys> for RevokeKey<'s> {
+    fn with_key_password(mut self: Box<Self>, password: Password)
+                         -> Result<Box<dyn sop::RevokeKey<'s, SQOP<'s>, Keys> + 's>> {
+        for p in password.variants() {
+            self.key_password.push(p.into());
+        }
+        Ok(self)
+    }
+
+    fn keys(self: Box<Self>, keys: &Keys) -> Result<Keys> {
+        let mut results = vec![];
+        for key in &keys.keys {
+            // Get the primary singer.
+            let mut primary = match key.primary_key().key().parts_as_secret() {
+                Ok(p) => p.clone(),
+                Err(_) => return Err(Error::BadData),
+            };
+
+            // Maybe unlock the secret.
+            if primary.secret().is_encrypted() {
+                let mut unlocked = false;
+
+                for p in &self.key_password {
+                    if let Ok(k) = primary.clone().decrypt_secret(p) {
+                        primary = k;
+                        unlocked = true;
+                        break;
+                    }
+                }
+
+                if ! unlocked {
+                    return Err(Error::KeyIsProtected);
+                }
+            }
+            let mut signer = primary.into_keypair().map_err(sop_error)?;
+
+            // And revoke the cert.
+            let revocation = key.revoke(&mut signer,
+                                        ReasonForRevocation::Unspecified,
+                                        b"unspecified").map_err(sop_error)?;
+            results.push(key.clone().insert_packets2(
+                std::iter::once(openpgp::Packet::from(revocation)))
+                         .map(|(cert, _changed)| cert)
+                         .map_err(sop_error)?);
+        }
+
+        Ok(results.into())
+    }
+}
+
+struct ExtractCert<'s> {
+    #[allow(dead_code)]
+    sqop: &'s SQOP<'s>,
+}
+
+impl<'s> ExtractCert<'s> {
+    fn new(sqop: &'s SQOP) -> Result<Box<dyn sop::ExtractCert<'s, SQOP<'s>, Certs, Keys> + 's>> {
         Ok(Box::new(ExtractCert {
             sqop,
-            no_armor: Default::default(),
         }))
     }
 }
 
-impl<'a> sop::ExtractCert<'a> for ExtractCert<'a> {
-    fn no_armor(mut self: Box<Self>) -> Box<dyn sop::ExtractCert<'a> + 'a> {
-        self.no_armor = true;
-        self
-    }
-
-    fn key(self: Box<Self>, key: &mut (dyn io::Read + Send + Sync))
-           -> Result<Box<dyn Ready + 'a>> {
-        Ok(Box::new(ExtractCertReady {
-            extract_cert: *self,
-            certs: vec![Cert::from_reader(key).map_err(sop_error)?],
-        }))
-    }
-
-    fn keys(self: Box<Self>, keys: &mut (dyn io::Read + Send + Sync))
-            -> Result<Box<dyn Ready + 'a>> {
-        Ok(Box::new(ExtractCertReady {
-            extract_cert: *self,
-            certs: CertParser::from_reader(keys).map_err(sop_error)?
-                .collect::<openpgp::Result<Vec<openpgp::Cert>>>()
-                .map_err(sop_error)?,
-        }))
+impl<'s> sop::ExtractCert<'s, SQOP<'s>, Certs, Keys> for ExtractCert<'s> {
+    fn keys(self: Box<Self>, keys: &Keys) -> Result<Certs> {
+        Ok(keys.keys.iter()
+           .map(|c| c.clone().strip_secret_key_material())
+           .collect::<Vec<_>>()
+           .into())
     }
 }
 
-struct ExtractCertReady<'a> {
-    extract_cert: ExtractCert<'a>,
-    certs: Vec<openpgp::Cert>,
-}
-
-impl<'a> sop::Ready for ExtractCertReady<'a> {
-    fn write_to(self: Box<Self>, sink: &mut (dyn io::Write + Send + Sync))
-                -> Result<()>
-    {
-        if self.extract_cert.no_armor {
-            for cert in self.certs {
-                cert.serialize(sink).map_err(sop_error)?;
-            }
-        } else {
-            for cert in self.certs {
-                cert.armored().serialize(sink).map_err(sop_error)?;
-            }
-        }
-        Ok(())
-    }
-}
-
-struct Sign<'a> {
-    sqop: &'a SQOP<'a>,
+struct Sign<'s> {
+    sqop: &'s SQOP<'s>,
     no_armor: bool,
     mode: SignAs,
     hash_algos: Vec<HashAlgorithm>,
@@ -348,12 +579,12 @@ struct Sign<'a> {
     signers: Vec<openpgp::Cert>,
 }
 
-impl<'a> Sign<'a> {
-    fn new(sqop: &'a SQOP) -> Result<Box<dyn sop::Sign<'a> + 'a>> {
+impl<'s> Sign<'s> {
+    fn new(sqop: &'s SQOP) -> Result<Box<dyn sop::Sign<'s, SQOP<'s>, Keys> + 's>> {
         Ok(Box::new(Self::unboxed(sqop)))
     }
 
-    fn unboxed(sqop: &'a SQOP) -> Sign<'a> {
+    fn unboxed(sqop: &'s SQOP) -> Sign<'s> {
         Sign {
             sqop,
             no_armor: Default::default(),
@@ -371,21 +602,14 @@ impl<'a> Sign<'a> {
 }
 
 impl Sign<'_> {
-    fn add_signing_key(&mut self, key: &mut (dyn io::Read + Send + Sync))
-                       -> Result<()> {
-        let cert = Cert::from_reader(key).map_err(sop_error)?;
-        self.add_signing_cert(cert)
-    }
-
-    fn add_signing_keys(&mut self, keys: &mut (dyn io::Read + Send + Sync))
-                        -> Result<()> {
-        for cert in CertParser::from_reader(keys).map_err(sop_error)? {
-            self.add_signing_cert(cert.map_err(sop_error)?)?;
+    fn add_signing_keys(&mut self, keys: &Keys) -> Result<()> {
+        for key in &keys.keys {
+            self.add_signing_cert(key)?;
         }
         Ok(())
     }
 
-    fn add_signing_cert(&mut self, cert: Cert) -> Result<()> {
+    fn add_signing_cert(&mut self, cert: &Cert) -> Result<()> {
         let vcert =
             cert.with_policy(self.sqop.policy, None)
             .map_err(|_| Error::KeyCannotSign)?;
@@ -407,7 +631,7 @@ impl Sign<'_> {
             break;
         }
 
-        self.signers.push(cert);
+        self.signers.push(cert.clone());
 
         if one {
             Ok(())
@@ -462,37 +686,34 @@ impl Sign<'_> {
     }
 }
 
-impl<'a> sop::Sign<'a> for Sign<'a> {
-    fn no_armor(mut self: Box<Self>) -> Box<dyn sop::Sign<'a> + 'a> {
+impl<'s> sop::Sign<'s, SQOP<'s>, Keys> for Sign<'s> {
+    fn no_armor(mut self: Box<Self>) -> Box<dyn sop::Sign<'s, SQOP<'s>, Keys> + 's> {
         self.no_armor = true;
         self
     }
 
-    fn mode(mut self: Box<Self>, mode: SignAs) -> Box<dyn sop::Sign<'a> + 'a> {
+    fn mode(mut self: Box<Self>, mode: SignAs) -> Box<dyn sop::Sign<'s, SQOP<'s>, Keys> + 's> {
         self.mode = mode;
         self
     }
 
-    fn key(mut self: Box<Self>, key: &mut (dyn io::Read + Send + Sync))
-           -> Result<Box<dyn sop::Sign<'a> + 'a>> {
-        self.add_signing_key(key)?;
-        Ok(self)
-    }
-
-    fn keys(mut self: Box<Self>, keys: &mut (dyn io::Read + Send + Sync))
-           -> Result<Box<dyn sop::Sign<'a> + 'a>> {
+    fn keys(mut self: Box<Self>, keys: &Keys)
+            -> Result<Box<dyn sop::Sign<'s, SQOP<'s>, Keys> + 's>> {
         self.add_signing_keys(keys)?;
         Ok(self)
     }
 
     fn with_key_password(mut self: Box<Self>, password: Password)
-                         -> Result<Box<dyn sop::Sign<'a> + 'a>> {
+                         -> Result<Box<dyn sop::Sign<'s, SQOP<'s>, Keys> + 's>> {
         self.with_key_password.push(password);
         Ok(self)
     }
 
-    fn data(self: Box<Self>, data: &'a mut (dyn io::Read + Send + Sync))
-        -> Result<Box<dyn ReadyWithResult<sop::Micalg> + 'a>> {
+    fn data<'d>(self: Box<Self>, data: &'d mut (dyn io::Read + Send + Sync))
+                -> Result<Box<dyn ReadyWithResult<sop::Micalg> + 'd>>
+    where
+        's: 'd,
+    {
         if self.signers.is_empty() {
             return Err(Error::MissingArg);
         }
@@ -504,12 +725,12 @@ impl<'a> sop::Sign<'a> for Sign<'a> {
     }
 }
 
-struct SignReady<'a> {
-    sign: Sign<'a>,
-    data: &'a mut (dyn io::Read + Send + Sync),
+struct SignReady<'s> {
+    sign: Sign<'s>,
+    data: &'s mut (dyn io::Read + Send + Sync),
 }
 
-impl<'a> sop::ReadyWithResult<sop::Micalg> for SignReady<'a> {
+impl<'s> sop::ReadyWithResult<sop::Micalg> for SignReady<'s> {
     fn write_to(self: Box<Self>, sink: &mut (dyn io::Write + Send + Sync))
                 -> Result<sop::Micalg>
     {
@@ -539,20 +760,23 @@ impl<'a> sop::ReadyWithResult<sop::Micalg> for SignReady<'a> {
     }
 }
 
-struct Verify<'a> {
-    sqop: &'a SQOP<'a>,
+struct Verify<'s> {
+    sqop: &'s SQOP<'s>,
     verbose: bool,
     not_before: Option<SystemTime>,
     not_after: Option<SystemTime>,
     certs: Vec<Cert>,
 }
 
-impl<'a> Verify<'a> {
-    fn new(sqop: &'a SQOP) -> Result<Box<dyn sop::Verify<'a> + 'a>> {
+impl<'s> Verify<'s> {
+    fn new(sqop: &'s SQOP) -> Result<Box<dyn sop::Verify<'s, SQOP<'s>, Certs> + 's>> {
         Ok(Box::new(Self::unboxed(sqop)))
     }
 
-    fn unboxed(sqop: &'a SQOP) -> Verify<'a> {
+    fn unboxed(sqop: &'s SQOP) -> Verify<'s>
+    where
+        's: 's,
+    {
         Verify {
             sqop,
             verbose: Default::default(),
@@ -563,36 +787,33 @@ impl<'a> Verify<'a> {
     }
 }
 
-impl<'a> sop::Verify<'a> for Verify<'a> {
+impl<'s> sop::Verify<'s, SQOP<'s>, Certs> for Verify<'s> {
     fn not_before(mut self: Box<Self>, t: SystemTime)
-                  -> Box<dyn sop::Verify<'a> + 'a> {
+                  -> Box<dyn sop::Verify<'s, SQOP<'s>, Certs> + 's> {
         self.not_before = Some(t);
         self
     }
 
     fn not_after(mut self: Box<Self>, t: SystemTime)
-                 -> Box<dyn sop::Verify<'a> + 'a> {
+                 -> Box<dyn sop::Verify<'s, SQOP<'s>, Certs> + 's> {
         self.not_after = Some(t);
         self
     }
 
-    fn cert(mut self: Box<Self>, cert: &mut (dyn io::Read + Send + Sync))
-            -> Result<Box<dyn sop::Verify<'a> + 'a>> {
-        self.certs.push(Cert::from_reader(cert).map_err(sop_error)?);
-        Ok(self)
-    }
-
-    fn certs(mut self: Box<Self>, cert: &mut (dyn io::Read + Send + Sync))
-             -> Result<Box<dyn sop::Verify<'a> + 'a>> {
-        for cert in CertParser::from_reader(cert).map_err(sop_error)? {
-            self.certs.push(cert.map_err(sop_error)?);
+    fn certs(mut self: Box<Self>, cert: &Certs)
+             -> Result<Box<dyn sop::Verify<'s, SQOP<'s>, Certs> + 's>> {
+        for cert in &cert.certs {
+            self.certs.push(cert.clone());
         }
         Ok(self)
     }
 
-    fn signatures(self: Box<Self>,
-                  signatures: &'a mut (dyn io::Read + Send + Sync))
-                  -> Result<Box<dyn sop::VerifySignatures + 'a>> {
+    fn signatures<'d>(self: Box<Self>,
+                      signatures: &'d mut (dyn io::Read + Send + Sync))
+                      -> Result<Box<dyn sop::VerifySignatures + 'd>>
+    where
+        's: 'd,
+    {
         Ok(Box::new(VerifySignatures {
             verify: *self,
             signatures: signatures,
@@ -600,9 +821,9 @@ impl<'a> sop::Verify<'a> for Verify<'a> {
     }
 }
 
-struct VerifySignatures<'a> {
-    verify: Verify<'a>,
-    signatures: &'a mut (dyn io::Read + Send + Sync),
+struct VerifySignatures<'s> {
+    verify: Verify<'s>,
+    signatures: &'s mut (dyn io::Read + Send + Sync),
 }
 
 impl sop::VerifySignatures for VerifySignatures<'_> {
@@ -632,8 +853,8 @@ impl sop::VerifySignatures for VerifySignatures<'_> {
     }
 }
 
-struct Encrypt<'a> {
-    sign: Sign<'a>,
+struct Encrypt<'s> {
+    sign: Sign<'s>,
     profile: &'static str,
     mode: EncryptAs,
     symmetric_algos: Vec<SymmetricAlgorithm>,
@@ -641,13 +862,13 @@ struct Encrypt<'a> {
     passwords: Vec<Password>,
 }
 
-impl<'a> Encrypt<'a> {
+impl<'s> Encrypt<'s> {
     const PROFILE_RFC4880: &'static str = "rfc4880";
     const PROFILES: &'static [(&'static str, &'static str)] = &[
         (Self::PROFILE_RFC4880, "use algorithms from RFC 4880"),
     ];
 
-    fn new(sqop: &'a SQOP) -> Result<Box<dyn sop::Encrypt<'a> + 'a>> {
+    fn new(sqop: &'s SQOP) -> Result<Box<dyn sop::Encrypt<'s, SQOP<'s>, Certs, Keys> + 's>> {
         Ok(Box::new(Encrypt {
             sign: Sign::unboxed(sqop),
             profile: Self::PROFILE_RFC4880,
@@ -670,7 +891,7 @@ impl<'a> Encrypt<'a> {
         }))
     }
 
-    fn add_cert(mut self: Box<Self>, cert: Cert)
+    fn add_cert(mut self: Box<Self>, cert: &Cert)
                  -> Result<Box<Self>> {
         let vcert = cert.with_policy(self.sign.sqop.policy, None)
             .map_err(|_| sop::Error::CertCannotEncrypt)?;
@@ -705,8 +926,8 @@ impl<'a> Encrypt<'a> {
     }
 }
 
-impl<'a> sop::Encrypt<'a> for Encrypt<'a> {
-    fn no_armor(mut self: Box<Self>) -> Box<dyn sop::Encrypt<'a> + 'a> {
+impl<'s> sop::Encrypt<'s, SQOP<'s>, Certs, Keys> for Encrypt<'s> {
+    fn no_armor(mut self: Box<Self>) -> Box<dyn sop::Encrypt<'s, SQOP<'s>, Certs, Keys> + 's> {
         self.sign.no_armor = true;
         self
     }
@@ -718,7 +939,7 @@ impl<'a> sop::Encrypt<'a> for Encrypt<'a> {
     }
 
     fn profile(mut self: Box<Self>, profile: &str)
-               -> Result<Box<dyn sop::Encrypt<'a> + 'a>> {
+               -> Result<Box<dyn sop::Encrypt<'s, SQOP<'s>, Certs, Keys> + 's>> {
         self.profile = match profile {
             Self::PROFILE_RFC4880 | "default" => Self::PROFILE_RFC4880,
             _ => return Err(Error::UnsupportedProfile),
@@ -726,55 +947,45 @@ impl<'a> sop::Encrypt<'a> for Encrypt<'a> {
         Ok(self)
     }
 
-    fn mode(mut self: Box<Self>, mode: EncryptAs) -> Box<dyn sop::Encrypt<'a> + 'a> {
+    fn mode(mut self: Box<Self>, mode: EncryptAs) -> Box<dyn sop::Encrypt<'s, SQOP<'s>, Certs, Keys> + 's> {
         self.sign.mode = mode.into();
         self.mode = mode;
         self
     }
 
-    fn sign_with_key(mut self: Box<Self>,
-                     key: &mut (dyn io::Read + Send + Sync))
-                     -> Result<Box<dyn sop::Encrypt<'a> + 'a>> {
-        self.sign.add_signing_key(key)?;
-        Ok(self)
-    }
-
     fn sign_with_keys(mut self: Box<Self>,
-                      keys: &mut (dyn io::Read + Send + Sync))
-                      -> Result<Box<dyn sop::Encrypt<'a> + 'a>> {
+                      keys: &Keys)
+                      -> Result<Box<dyn sop::Encrypt<'s, SQOP<'s>, Certs, Keys> + 's>> {
         self.sign.add_signing_keys(keys)?;
         Ok(self)
     }
 
     fn with_key_password(mut self: Box<Self>, password: Password)
-                         -> Result<Box<dyn sop::Encrypt<'a> + 'a>> {
+                         -> Result<Box<dyn sop::Encrypt<'s, SQOP<'s>, Certs, Keys> + 's>> {
         self.sign.with_key_password.push(password);
         Ok(self)
     }
 
     fn with_password(mut self: Box<Self>, password: Password)
-                     -> Result<Box<dyn sop::Encrypt<'a> + 'a>> {
+                     -> Result<Box<dyn sop::Encrypt<'s, SQOP<'s>, Certs, Keys> + 's>> {
         self.passwords.push(password);
         Ok(self)
     }
 
-    fn with_cert(self: Box<Self>, cert: &mut (dyn io::Read + Send + Sync))
-                 -> Result<Box<dyn sop::Encrypt<'a> + 'a>> {
-        let cert = Cert::from_reader(cert).map_err(sop_error)?;
-        Ok(self.add_cert(cert)?)
-    }
-
-    fn with_certs(mut self: Box<Self>, certs: &mut (dyn io::Read + Send + Sync))
-                  -> Result<Box<dyn sop::Encrypt<'a> + 'a>> {
-        for cert in CertParser::from_reader(certs).map_err(sop_error)? {
-            self = self.add_cert(cert.map_err(sop_error)?)?;
+    fn with_certs(mut self: Box<Self>, certs: &Certs)
+                  -> Result<Box<dyn sop::Encrypt<'s, SQOP<'s>, Certs, Keys> + 's>> {
+        for cert in &certs.certs {
+            self = self.add_cert(cert)?;
         }
         Ok(self)
     }
 
-    fn plaintext(self: Box<Self>,
-                 plaintext: &'a mut (dyn io::Read + Send + Sync))
-                 -> Result<Box<dyn Ready + 'a>> {
+    fn plaintext<'d>(self: Box<Self>,
+                     plaintext: &'d mut (dyn io::Read + Send + Sync))
+                     -> Result<Box<dyn ReadyWithResult<Option<sop::SessionKey>> + 'd>>
+    where
+        's: 'd
+    {
         Ok(Box::new(EncryptReady {
             encrypt: *self,
             plaintext,
@@ -782,14 +993,14 @@ impl<'a> sop::Encrypt<'a> for Encrypt<'a> {
     }
 }
 
-struct EncryptReady<'a> {
-    encrypt: Encrypt<'a>,
-    plaintext: &'a mut (dyn io::Read + Send + Sync),
+struct EncryptReady<'s> {
+    encrypt: Encrypt<'s>,
+    plaintext: &'s mut (dyn io::Read + Send + Sync),
 }
 
-impl<'a> sop::Ready for EncryptReady<'a> {
+impl<'s> sop::ReadyWithResult<Option<sop::SessionKey>> for EncryptReady<'s> {
     fn write_to(self: Box<Self>, sink: &mut (dyn io::Write + Send + Sync))
-                -> Result<()>
+                -> Result<Option<sop::SessionKey>>
     {
         if self.encrypt.recipients.is_empty()
             && self.encrypt.passwords.is_empty()
@@ -805,13 +1016,19 @@ impl<'a> sop::Ready for EncryptReady<'a> {
         // XXX: Honor self.profile once we have more than one.
 
         // Encrypt the message.
+        let cipher =
+            self.encrypt.symmetric_algos.get(0).cloned().unwrap_or_default();
+        let session_key =
+            SessionKey::new(cipher.key_size().map_err(sop_error)?);
+        let sop_session_key = sop::SessionKey::new(cipher, &session_key)?;
         let mut message =
-            Encryptor::for_recipients(message, self.encrypt.recipients.iter())
+            Encryptor::with_session_key(message, cipher, session_key)
+            .map_err(sop_error)?
+            .add_recipients(self.encrypt.recipients.iter())
             .add_passwords(
                 self.encrypt.passwords.into_iter()
                     .map(|p| crypto::Password::from(p.normalized())))
-            .symmetric_algo(
-                self.encrypt.symmetric_algos.get(0).cloned().unwrap_or_default())
+            .symmetric_algo(cipher)
             .build().map_err(sop_error)?;
 
         // Maybe sign the message.
@@ -835,20 +1052,20 @@ impl<'a> sop::Ready for EncryptReady<'a> {
                 .build().map_err(sop_error)?;
         io::copy(self.plaintext, &mut message)?;
         message.finalize().map_err(sop_error)?;
-        Ok(())
+        Ok(Some(sop_session_key))
     }
 }
 
-struct Decrypt<'a> {
-    verify: Verify<'a>,
+struct Decrypt<'s> {
+    verify: Verify<'s>,
     session_keys: Vec<sop::SessionKey>,
     passwords: Vec<Password>,
     keys: Vec<Cert>,
     with_key_password: Vec<Password>,
 }
 
-impl<'a> Decrypt<'a> {
-    fn new(sqop: &'a SQOP) -> Result<Box<dyn sop::Decrypt<'a> + 'a>> {
+impl<'s> Decrypt<'s> {
+    fn new(sqop: &'s SQOP) -> Result<Box<dyn sop::Decrypt<'s, SQOP<'s>, Certs, Keys> + 's>> {
         Ok(Box::new(Decrypt {
             verify: Verify::unboxed(sqop),
             session_keys: Default::default(),
@@ -859,71 +1076,60 @@ impl<'a> Decrypt<'a> {
     }
 }
 
-impl<'a> sop::Decrypt<'a> for Decrypt<'a> {
+impl<'s> sop::Decrypt<'s, SQOP<'s>, Certs, Keys> for Decrypt<'s> {
     fn verify_not_before(mut self: Box<Self>, t: SystemTime)
-                         -> Box<dyn sop::Decrypt<'a> + 'a> {
+                         -> Box<dyn sop::Decrypt<'s, SQOP<'s>, Certs, Keys> + 's> {
         self.verify.not_before = Some(t);
         self
     }
 
     fn verify_not_after(mut self: Box<Self>, t: SystemTime)
-                        -> Box<dyn sop::Decrypt<'a> + 'a> {
+                        -> Box<dyn sop::Decrypt<'s, SQOP<'s>, Certs, Keys> + 's> {
         self.verify.not_after = Some(t);
         self
     }
 
-    fn verify_with_cert(mut self: Box<Self>,
-                        cert: &mut (dyn io::Read + Send + Sync))
-                        -> Result<Box<dyn sop::Decrypt<'a> + 'a>> {
-        self.verify.certs.push(Cert::from_reader(cert).map_err(sop_error)?);
-        Ok(self)
-    }
-
     fn verify_with_certs(mut self: Box<Self>,
-                         certs: &mut (dyn io::Read + Send + Sync))
-                         -> Result<Box<dyn sop::Decrypt<'a> + 'a>> {
-        for cert in CertParser::from_reader(certs).map_err(sop_error)? {
-            self.verify.certs.push(cert.map_err(sop_error)?);
+                         certs: &Certs)
+                         -> Result<Box<dyn sop::Decrypt<'s, SQOP<'s>, Certs, Keys> + 's>> {
+        for cert in &certs.certs {
+            self.verify.certs.push(cert.clone());
         }
         Ok(self)
     }
 
     fn with_session_key(mut self: Box<Self>, sk: sop::SessionKey)
-                        -> Result<Box<dyn sop::Decrypt<'a> + 'a>> {
+                        -> Result<Box<dyn sop::Decrypt<'s, SQOP<'s>, Certs, Keys> + 's>> {
         self.session_keys.push(sk);
         Ok(self)
     }
 
     fn with_password(mut self: Box<Self>, password: Password)
-                     -> Result<Box<dyn sop::Decrypt<'a> + 'a>> {
+                     -> Result<Box<dyn sop::Decrypt<'s, SQOP<'s>, Certs, Keys> + 's>> {
         self.passwords.push(password);
         Ok(self)
     }
 
-    fn with_key(mut self: Box<Self>, key: &mut (dyn io::Read + Send + Sync))
-                -> Result<Box<dyn sop::Decrypt<'a> + 'a>> {
-        self.keys.push(Cert::from_reader(key).map_err(sop_error)?);
-        Ok(self)
-    }
-
-    fn with_keys(mut self: Box<Self>, keys: &mut (dyn io::Read + Send + Sync))
-                 -> Result<Box<dyn sop::Decrypt<'a> + 'a>> {
-        for key in CertParser::from_reader(keys).map_err(sop_error)? {
-            self.keys.push(key.map_err(sop_error)?);
+    fn with_keys(mut self: Box<Self>, keys: &Keys)
+                 -> Result<Box<dyn sop::Decrypt<'s, SQOP<'s>, Certs, Keys> + 's>> {
+        for key in &keys.keys {
+            self.keys.push(key.clone());
         }
         Ok(self)
     }
 
     fn with_key_password(mut self: Box<Self>, password: Password)
-                         -> Result<Box<dyn sop::Decrypt<'a> + 'a>> {
+                         -> Result<Box<dyn sop::Decrypt<'s, SQOP<'s>, Certs, Keys> + 's>> {
         self.with_key_password.push(password);
         Ok(self)
     }
 
-    fn ciphertext(self: Box<Self>,
-                  ciphertext: &'a mut (dyn io::Read + Send + Sync))
-                  -> Result<Box<dyn sop::ReadyWithResult<(Option<sop::SessionKey>,
-                                                          Vec<sop::Verification>)> + 'a>>
+    fn ciphertext<'d>(self: Box<Self>,
+                      ciphertext: &'d mut (dyn io::Read + Send + Sync))
+                      -> Result<Box<dyn sop::ReadyWithResult<(Option<sop::SessionKey>,
+                                                              Vec<sop::Verification>)> + 'd>>
+    where
+        's: 'd
     {
         Ok(Box::new(DecryptReady {
             decrypt: *self,
@@ -932,13 +1138,13 @@ impl<'a> sop::Decrypt<'a> for Decrypt<'a> {
     }
 }
 
-struct DecryptReady<'a> {
-    decrypt: Decrypt<'a>,
-    ciphertext: &'a mut (dyn io::Read + Send + Sync),
+struct DecryptReady<'s> {
+    decrypt: Decrypt<'s>,
+    ciphertext: &'s mut (dyn io::Read + Send + Sync),
 }
 
-impl<'a> sop::ReadyWithResult<(Option<sop::SessionKey>, Vec<sop::Verification>)>
-    for DecryptReady<'a>
+impl<'s> sop::ReadyWithResult<(Option<sop::SessionKey>, Vec<sop::Verification>)>
+    for DecryptReady<'s>
 {
     fn write_to(self: Box<Self>, sink: &mut (dyn io::Write + Send + Sync))
                 -> Result<(Option<sop::SessionKey>, Vec<sop::Verification>)> {
@@ -971,13 +1177,13 @@ impl<'a> sop::ReadyWithResult<(Option<sop::SessionKey>, Vec<sop::Verification>)>
     }
 }
 
-struct Armor<'a> {
-    sqop: &'a SQOP<'a>,
+struct Armor<'s> {
+    sqop: &'s SQOP<'s>,
     label: ArmorLabel,
 }
 
-impl<'a> Armor<'a> {
-    fn new(sqop: &'a SQOP) -> Result<Box<dyn sop::Armor<'a> + 'a>> {
+impl<'s> Armor<'s> {
+    fn new(sqop: &'s SQOP) -> Result<Box<dyn sop::Armor<'s> + 's>> {
         Ok(Box::new(Armor {
             sqop,
             label: Default::default(),
@@ -985,15 +1191,18 @@ impl<'a> Armor<'a> {
     }
 }
 
-impl<'a> sop::Armor<'a> for Armor<'a> {
+impl<'s> sop::Armor<'s> for Armor<'s> {
     fn label(mut self: Box<Self>, label: ArmorLabel)
-             -> Box<dyn sop::Armor<'a> + 'a> {
+             -> Box<dyn sop::Armor<'s> + 's> {
         self.label = label;
         self
     }
 
-    fn data(self: Box<Self>, data: &'a mut (dyn io::Read + Send + Sync))
-        -> Result<Box<dyn sop::Ready + 'a>> {
+    fn data<'d>(self: Box<Self>, data: &'d mut (dyn io::Read + Send + Sync))
+                -> Result<Box<dyn sop::Ready + 'd>>
+    where
+        's: 'd
+    {
         Ok(Box::new(ArmorReady {
             armor: *self,
             data,
@@ -1001,12 +1210,12 @@ impl<'a> sop::Armor<'a> for Armor<'a> {
     }
 }
 
-struct ArmorReady<'a> {
-    armor: Armor<'a>,
-    data: &'a mut (dyn io::Read + Send + Sync),
+struct ArmorReady<'s> {
+    armor: Armor<'s>,
+    data: &'s mut (dyn io::Read + Send + Sync),
 }
 
-impl<'a> sop::Ready for ArmorReady<'a> {
+impl<'s> sop::Ready for ArmorReady<'s> {
     fn write_to(self: Box<Self>, sink: &mut (dyn io::Write + Send + Sync))
                 -> Result<()> {
         let _ = self.armor.sqop;
@@ -1026,7 +1235,7 @@ impl<'a> sop::Ready for ArmorReady<'a> {
             source = Box::new(Adapter::new(r));
         }
 
-        fn make<'a>(sink: &'a mut (dyn io::Write + Send + Sync),
+        fn make<'s>(sink: &'s mut (dyn io::Write + Send + Sync),
                     kind: armor::Kind,
                     headers: Vec<(String, String)>)
                     -> Result<Message>
@@ -1079,21 +1288,24 @@ impl<'a> sop::Ready for ArmorReady<'a> {
     }
 }
 
-struct Dearmor<'a> {
-    sqop: &'a SQOP<'a>,
+struct Dearmor<'s> {
+    sqop: &'s SQOP<'s>,
 }
 
-impl<'a> Dearmor<'a> {
-    fn new(sqop: &'a SQOP) -> Result<Box<dyn sop::Dearmor<'a> + 'a>> {
+impl<'s> Dearmor<'s> {
+    fn new(sqop: &'s SQOP) -> Result<Box<dyn sop::Dearmor<'s> + 's>> {
         Ok(Box::new(Dearmor {
             sqop,
         }))
     }
 }
 
-impl<'a> sop::Dearmor<'a> for Dearmor<'a> {
-    fn data(self: Box<Self>, data: &'a mut (dyn io::Read + Send + Sync))
-        -> Result<Box<dyn sop::Ready + 'a>> {
+impl<'s> sop::Dearmor<'s> for Dearmor<'s> {
+    fn data<'d>(self: Box<Self>, data: &'d mut (dyn io::Read + Send + Sync))
+                -> Result<Box<dyn sop::Ready + 'd>>
+    where
+        's: 'd
+    {
         Ok(Box::new(DearmorReady {
             dearmor: *self,
             data,
@@ -1101,9 +1313,9 @@ impl<'a> sop::Dearmor<'a> for Dearmor<'a> {
     }
 }
 
-struct DearmorReady<'a> {
-    dearmor: Dearmor<'a>,
-    data: &'a mut (dyn io::Read + Send + Sync),
+struct DearmorReady<'s> {
+    dearmor: Dearmor<'s>,
+    data: &'s mut (dyn io::Read + Send + Sync),
 }
 
 impl sop::Ready for DearmorReady<'_> {
@@ -1130,13 +1342,13 @@ impl sop::Ready for DearmorReady<'_> {
     }
 }
 
-struct InlineDetach<'a> {
-    sqop: &'a SQOP<'a>,
+struct InlineDetach<'s> {
+    sqop: &'s SQOP<'s>,
     no_armor: bool,
 }
 
-impl<'a> InlineDetach<'a> {
-    fn new(sqop: &'a SQOP) -> Result<Box<dyn sop::InlineDetach<'a> + 'a>> {
+impl<'s> InlineDetach<'s> {
+    fn new(sqop: &'s SQOP) -> Result<Box<dyn sop::InlineDetach<'s> + 's>> {
         Ok(Box::new(InlineDetach {
             sqop,
             no_armor: Default::default(),
@@ -1144,14 +1356,17 @@ impl<'a> InlineDetach<'a> {
     }
 }
 
-impl<'a> sop::InlineDetach<'a> for InlineDetach<'a> {
-    fn no_armor(mut self: Box<Self>) -> Box<dyn sop::InlineDetach<'a> + 'a> {
+impl<'s> sop::InlineDetach<'s> for InlineDetach<'s> {
+    fn no_armor(mut self: Box<Self>) -> Box<dyn sop::InlineDetach<'s> + 's> {
         self.no_armor = true;
         self
     }
 
-    fn message(self: Box<Self>, data: &'a mut (dyn io::Read + Send + Sync))
-        -> Result<Box<dyn ReadyWithResult<Vec<u8>> + 'a>> {
+    fn message<'d>(self: Box<Self>, data: &'d mut (dyn io::Read + Send + Sync))
+        -> Result<Box<dyn ReadyWithResult<Vec<u8>> + 'd>>
+    where
+        's: 'd
+    {
         Ok(Box::new(InlineDetachReady {
             inline_detach: *self,
             data,
@@ -1159,12 +1374,12 @@ impl<'a> sop::InlineDetach<'a> for InlineDetach<'a> {
     }
 }
 
-struct InlineDetachReady<'a> {
-    inline_detach: InlineDetach<'a>,
-    data: &'a mut (dyn io::Read + Send + Sync),
+struct InlineDetachReady<'s> {
+    inline_detach: InlineDetach<'s>,
+    data: &'s mut (dyn io::Read + Send + Sync),
 }
 
-impl<'a> sop::ReadyWithResult<Vec<u8>> for InlineDetachReady<'_> {
+impl<'s> sop::ReadyWithResult<Vec<u8>> for InlineDetachReady<'_> {
     fn write_to(self: Box<Self>, sink: &mut (dyn io::Write + Send + Sync))
                 -> Result<Vec<u8>> {
         let _ = self.inline_detach.sqop;
@@ -1238,16 +1453,16 @@ impl<'a> sop::ReadyWithResult<Vec<u8>> for InlineDetachReady<'_> {
     }
 }
 
-struct InlineVerify<'a> {
-    sqop: &'a SQOP<'a>,
+struct InlineVerify<'s> {
+    sqop: &'s SQOP<'s>,
     verbose: bool,
     not_before: Option<SystemTime>,
     not_after: Option<SystemTime>,
     certs: Vec<Cert>,
 }
 
-impl<'a> InlineVerify<'a> {
-    fn new(sqop: &'a SQOP) -> Result<Box<dyn sop::InlineVerify<'a> + 'a>> {
+impl<'s> InlineVerify<'s> {
+    fn new(sqop: &'s SQOP) -> Result<Box<dyn sop::InlineVerify<'s, SQOP<'s>, Certs> + 's>> {
         Ok(Box::new(InlineVerify {
             sqop,
             verbose: Default::default(),
@@ -1258,35 +1473,32 @@ impl<'a> InlineVerify<'a> {
     }
 }
 
-impl<'a> sop::InlineVerify<'a> for InlineVerify<'a> {
+impl<'s> sop::InlineVerify<'s, SQOP<'s>, Certs> for InlineVerify<'s> {
     fn not_before(mut self: Box<Self>, t: SystemTime)
-                  -> Box<dyn sop::InlineVerify<'a> + 'a> {
+                  -> Box<dyn sop::InlineVerify<'s, SQOP<'s>, Certs> + 's> {
         self.not_before = Some(t);
         self
     }
 
     fn not_after(mut self: Box<Self>, t: SystemTime)
-                 -> Box<dyn sop::InlineVerify<'a> + 'a> {
+                 -> Box<dyn sop::InlineVerify<'s, SQOP<'s>, Certs> + 's> {
         self.not_after = Some(t);
         self
     }
 
-    fn cert(mut self: Box<Self>, cert: &mut (dyn io::Read + Send + Sync))
-            -> Result<Box<dyn sop::InlineVerify<'a> + 'a>> {
-        self.certs.push(Cert::from_reader(cert).map_err(sop_error)?);
-        Ok(self)
-    }
-
-    fn certs(mut self: Box<Self>, cert: &mut (dyn io::Read + Send + Sync))
-             -> Result<Box<dyn sop::InlineVerify<'a> + 'a>> {
-        for cert in CertParser::from_reader(cert).map_err(sop_error)? {
-            self.certs.push(cert.map_err(sop_error)?);
+    fn certs(mut self: Box<Self>, certs: &Certs)
+             -> Result<Box<dyn sop::InlineVerify<'s, SQOP<'s>, Certs> + 's>> {
+        for cert in &certs.certs {
+            self.certs.push(cert.clone());
         }
         Ok(self)
     }
 
-    fn message(self: Box<Self>, data: &'a mut (dyn io::Read + Send + Sync))
-        -> Result<Box<dyn ReadyWithResult<Vec<Verification>> + 'a>> {
+    fn message<'d>(self: Box<Self>, data: &'d mut (dyn io::Read + Send + Sync))
+        -> Result<Box<dyn ReadyWithResult<Vec<Verification>> + 'd>>
+    where
+        's: 'd
+    {
         Ok(Box::new(InlineVerifyReady {
             inline_verify: *self,
             data,
@@ -1294,12 +1506,12 @@ impl<'a> sop::InlineVerify<'a> for InlineVerify<'a> {
     }
 }
 
-struct InlineVerifyReady<'a> {
-    inline_verify: InlineVerify<'a>,
-    data: &'a mut (dyn io::Read + Send + Sync),
+struct InlineVerifyReady<'s> {
+    inline_verify: InlineVerify<'s>,
+    data: &'s mut (dyn io::Read + Send + Sync),
 }
 
-impl<'a> sop::ReadyWithResult<Vec<Verification>> for InlineVerifyReady<'_> {
+impl<'s> sop::ReadyWithResult<Vec<Verification>> for InlineVerifyReady<'_> {
     fn write_to(self: Box<Self>, sink: &mut (dyn io::Write + Send + Sync))
                 -> Result<Vec<Verification>> {
         let helper = VHelper::new(
@@ -1324,13 +1536,13 @@ impl<'a> sop::ReadyWithResult<Vec<Verification>> for InlineVerifyReady<'_> {
     }
 }
 
-struct InlineSign<'a> {
-    sign: Sign<'a>,
+struct InlineSign<'s> {
+    sign: Sign<'s>,
     mode: InlineSignAs,
 }
 
-impl<'a> InlineSign<'a> {
-    fn new(sqop: &'a SQOP) -> Result<Box<dyn sop::InlineSign<'a> + 'a>> {
+impl<'s> InlineSign<'s> {
+    fn new(sqop: &'s SQOP) -> Result<Box<dyn sop::InlineSign<'s, SQOP<'s>, Keys> + 's>> {
         Ok(Box::new(InlineSign {
             sign: Sign::unboxed(sqop),
             mode: Default::default(),
@@ -1338,37 +1550,34 @@ impl<'a> InlineSign<'a> {
     }
 }
 
-impl<'a> sop::InlineSign<'a> for InlineSign<'a> {
-    fn no_armor(mut self: Box<Self>) -> Box<dyn sop::InlineSign<'a> + 'a> {
+impl<'s> sop::InlineSign<'s, SQOP<'s>, Keys> for InlineSign<'s> {
+    fn no_armor(mut self: Box<Self>) -> Box<dyn sop::InlineSign<'s, SQOP<'s>, Keys> + 's> {
         self.sign.no_armor = true;
         self
     }
 
-    fn mode(mut self: Box<Self>, mode: InlineSignAs) -> Box<dyn sop::InlineSign<'a> + 'a> {
+    fn mode(mut self: Box<Self>, mode: InlineSignAs) -> Box<dyn sop::InlineSign<'s, SQOP<'s>, Keys> + 's> {
         self.mode = mode;
         self
     }
 
-    fn key(mut self: Box<Self>, key: &mut (dyn io::Read + Send + Sync))
-           -> Result<Box<dyn sop::InlineSign<'a> + 'a>> {
-        self.sign.add_signing_key(key)?;
-        Ok(self)
-    }
-
-    fn keys(mut self: Box<Self>, keys: &mut (dyn io::Read + Send + Sync))
-           -> Result<Box<dyn sop::InlineSign<'a> + 'a>> {
+    fn keys(mut self: Box<Self>, keys: &Keys)
+           -> Result<Box<dyn sop::InlineSign<'s, SQOP<'s>, Keys> + 's>> {
         self.sign.add_signing_keys(keys)?;
         Ok(self)
     }
 
     fn with_key_password(mut self: Box<Self>, password: Password)
-                         -> Result<Box<dyn sop::InlineSign<'a> + 'a>> {
+                         -> Result<Box<dyn sop::InlineSign<'s, SQOP<'s>, Keys> + 's>> {
         self.sign.with_key_password.push(password);
         Ok(self)
     }
 
-    fn data(self: Box<Self>, data: &'a mut (dyn io::Read + Send + Sync))
-        -> Result<Box<dyn Ready + 'a>> {
+    fn data<'d>(self: Box<Self>, data: &'d mut (dyn io::Read + Send + Sync))
+        -> Result<Box<dyn Ready + 'd>>
+    where
+        's: 'd
+    {
         if self.sign.signers.is_empty() {
             return Err(Error::MissingArg);
         }
@@ -1385,12 +1594,12 @@ impl<'a> sop::InlineSign<'a> for InlineSign<'a> {
     }
 }
 
-struct InlineSignReady<'a> {
-    inline_sign: InlineSign<'a>,
-    data: &'a mut (dyn io::Read + Send + Sync),
+struct InlineSignReady<'s> {
+    inline_sign: InlineSign<'s>,
+    data: &'s mut (dyn io::Read + Send + Sync),
 }
 
-impl<'a> sop::Ready for InlineSignReady<'a> {
+impl<'s> sop::Ready for InlineSignReady<'s> {
     fn write_to(self: Box<Self>, sink: &mut (dyn io::Write + Send + Sync))
                 -> Result<()>
     {
@@ -1888,43 +2097,41 @@ mod tests {
 
         let alice_sec = sop.generate_key()?
             .userid("Alice Lovelace <alice@openpgp.example>")
-            .generate()?
-            .to_vec()?;
+            .generate()?;
         let alice_pgp = sop.extract_cert()?
-            .key(&mut Cursor::new(&alice_sec))?.to_vec()?;
+            .keys(&alice_sec)?;
 
         let bob_sec = sop.generate_key()?
             .userid("Bob Babbage <bob@openpgp.example>")
-            .generate()?
-            .to_vec()?;
+            .generate()?;
         let bob_pgp = sop.extract_cert()?
-            .key(&mut Cursor::new(&bob_sec))?.to_vec()?;
+            .keys(&bob_sec)?;
 
         let statement = b"Hello World :)";
         let mut data = Cursor::new(&statement);
         let (_micalg, statement_asc) = sop.sign()?
             .mode(SignAs::Text)
-            .key(&mut Cursor::new(&alice_sec))?
+            .keys(&alice_sec)?
             .data(&mut data)?
             .to_vec()?;
 
         let mut statement_asc_cur = Cursor::new(&statement_asc);
         let verifications = sop.verify()?
-            .cert(&mut Cursor::new(&alice_pgp))?
+            .certs(&alice_pgp)?
             .signatures(&mut statement_asc_cur)?
             .data(&mut Cursor::new(&statement))?;
         assert_eq!(verifications.len(), 1);
 
         let mut statement_cur = Cursor::new(&statement);
-        let ciphertext = sop.encrypt()?
-            .sign_with_key(&mut Cursor::new(&alice_sec))?
-            .with_cert(&mut Cursor::new(&bob_pgp))?
+        let (_session_key, ciphertext) = sop.encrypt()?
+            .sign_with_keys(&alice_sec)?
+            .with_certs(&bob_pgp)?
             .plaintext(&mut statement_cur)?
             .to_vec()?;
 
         let mut ciphertext_cur = Cursor::new(&ciphertext);
         let (_, plaintext) = sop.decrypt()?
-            .with_key(&mut Cursor::new(&bob_sec))?
+            .with_keys(&bob_sec)?
             .ciphertext(&mut ciphertext_cur)?
             .to_vec()?;
         assert_eq!(&plaintext, statement);
