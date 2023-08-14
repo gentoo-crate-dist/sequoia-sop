@@ -73,23 +73,6 @@ codespell:
       -S "*.bin,*.gpg,*.pgp,./.git,data,highlight.js,*/target,Makefile"
   after_script: []
 
-windows-gnu:
-  tags:
-    - win
-    - win2019
-  stage: build
-  image: 192.168.122.1:5000/sequoia-pgp/build-docker-image/windows-gnu
-  before_script:
-    - rustup default stable
-    - clang -v
-    - rustc --version --verbose
-    - cargo --version
-  script:
-    - cargo test --no-default-features --features cli,crypto-cng,compression
-  after_script: []
-  variables:
-    CFLAGS: "" # Silence some C warnings when compiling under Windows
-
 windows-msvc:
   tags:
     - win
