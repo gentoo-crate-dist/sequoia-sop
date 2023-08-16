@@ -1323,7 +1323,7 @@ impl sop::Ready for DearmorReady<'_> {
                 -> Result<()> {
         let _ = self.dearmor.sqop;
 
-        // Peek at the data to see if it is already armored.  We make
+        // Peek at the data to see if it is really armored.  We make
         // no effort to verify the packet structure.
         let mut source = Generic::new(self.data, None).as_boxed();
         let armored =
