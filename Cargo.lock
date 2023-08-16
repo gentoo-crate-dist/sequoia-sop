@@ -1319,9 +1319,9 @@ checksum = "62bb4feee49fdd9f707ef802e22365a35de4b7b299de4763d44bfea899442ff9"
 
 [[package]]
 name = "sop"
-version = "0.6.0"
+version = "0.7.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6b9ba250f1ed1ba8d290a235f6208d8ff735044d2f1b1234d91d29e47a85e787"
+checksum = "dfbb68f8161edf460cd762b5aa03e47416ae51c9d2830a48e0b6d0a771539abf"
 dependencies = [
  "anyhow",
  "chrono",
