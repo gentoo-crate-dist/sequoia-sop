@@ -215,12 +215,12 @@ impl<'s> sop::SOP<'s> for SQOP<'s> {
         Ok(Box::new(Version {}))
     }
     fn generate_key(&'s self)
-        -> Result<Box<dyn sop::GenerateKey<SQOP<'s>, Keys> + 's>>
+        -> Result<Box<dyn sop::GenerateKey<SQOP, Keys> + 's>>
     {
         GenerateKey::new(self)
     }
     fn change_key_password(&'s self)
-        -> Result<Box<dyn sop::ChangeKeyPassword<SQOP<'s>, Keys> + 's>>
+        -> Result<Box<dyn sop::ChangeKeyPassword<SQOP, Keys> + 's>>
     {
         ChangeKeyPassword::new(self)
     }
@@ -230,26 +230,26 @@ impl<'s> sop::SOP<'s> for SQOP<'s> {
         RevokeKey::new(self)
     }
     fn extract_cert(&'s self)
-        -> Result<Box<dyn sop::ExtractCert<SQOP<'s>, Certs, Keys> + 's>>
+        -> Result<Box<dyn sop::ExtractCert<SQOP, Certs, Keys> + 's>>
     {
         ExtractCert::new(self)
     }
     fn sign(&'s self)
-        -> Result<Box<dyn sop::Sign<SQOP<'s>, Keys> + 's>>
+        -> Result<Box<dyn sop::Sign<SQOP, Keys> + 's>>
     {
         Sign::new(self)
     }
     fn verify(&'s self)
-        -> Result<Box<dyn sop::Verify<SQOP<'s>, Certs> + 's>>
+        -> Result<Box<dyn sop::Verify<SQOP, Certs> + 's>>
     {
         Verify::new(self)
     }
     fn encrypt(&'s self)
-        -> Result<Box<dyn sop::Encrypt<SQOP<'s>, Certs, Keys> + 's>> {
+        -> Result<Box<dyn sop::Encrypt<SQOP, Certs, Keys> + 's>> {
         Encrypt::new(self)
     }
     fn decrypt(&'s self)
-        -> Result<Box<dyn sop::Decrypt<SQOP<'s>, Certs, Keys> + 's>> {
+        -> Result<Box<dyn sop::Decrypt<SQOP, Certs, Keys> + 's>> {
         Decrypt::new(self)
     }
     fn armor(&'s self) -> Result<Box<dyn sop::Armor + 's>> {
@@ -264,12 +264,12 @@ impl<'s> sop::SOP<'s> for SQOP<'s> {
         InlineDetach::new(self)
     }
     fn inline_verify(&'s self)
-        -> Result<Box<dyn sop::InlineVerify<SQOP<'s>, Certs> + 's>>
+        -> Result<Box<dyn sop::InlineVerify<SQOP, Certs> + 's>>
     {
         InlineVerify::new(self)
     }
     fn inline_sign(&'s self)
-        -> Result<Box<dyn sop::InlineSign<SQOP<'s>, Keys> + 's>>
+        -> Result<Box<dyn sop::InlineSign<SQOP, Keys> + 's>>
     {
         InlineSign::new(self)
     }
