@@ -29,6 +29,7 @@
 use std::{
     collections::HashMap,
     io::{self, Cursor, Write},
+    marker::PhantomData,
     time::SystemTime,
 };
 
@@ -83,28 +84,30 @@ use sop::{
 
 /// A collection of certs.
 pub struct Certs<'s> {
-    sop: &'s SQOP<'s>,
     certs: Vec<openpgp::Cert>,
+    ghostly_reference: PhantomData<&'s ()>
 }
 
-impl<'s> sop::plumbing::SopRef<'s, SQOP<'s>> for Certs<'s> {
-    fn sop(&self) -> &'s SQOP<'s> {
-        self.sop
+
+impl From<Vec<openpgp::Cert>> for Certs<'_> {
+    fn from(certs: Vec<openpgp::Cert>) -> Self {
+        Certs {
+            certs,
+            ghostly_reference: PhantomData,
+        }
     }
 }
 
 impl<'s> sop::Load<'s, SQOP<'s>> for Certs<'s> {
-    fn from_reader(sop: &'s SQOP, source: &mut (dyn io::Read + Send + Sync))
+    fn from_reader(_sop: &'s SQOP, source: &mut (dyn io::Read + Send + Sync))
                    -> Result<Self>
     where
         Self: Sized,
     {
-        Ok(Certs {
-            sop,
-            certs: CertParser::from_reader(source).map_err(sop_error)?
-                .collect::<openpgp::Result<Vec<openpgp::Cert>>>()
-                .map_err(sop_error)?,
-        })
+        CertParser::from_reader(source).map_err(sop_error)?
+            .collect::<openpgp::Result<Vec<openpgp::Cert>>>()
+            .map(Into::into)
+            .map_err(sop_error)
     }
 }
 
@@ -139,28 +142,29 @@ impl sop::Save for Certs<'_> {
 
 /// A collection of keys.
 pub struct Keys<'s> {
-    sop: &'s SQOP<'s>,
     keys: Vec<openpgp::Cert>,
+    ghostly_reference: PhantomData<&'s ()>
 }
 
-impl<'s> sop::plumbing::SopRef<'s, SQOP<'s>> for Keys<'s> {
-    fn sop(&self) -> &'s SQOP<'s> {
-        self.sop
+impl From<Vec<openpgp::Cert>> for Keys<'_> {
+    fn from(keys: Vec<openpgp::Cert>) -> Self {
+        Keys {
+            keys,
+            ghostly_reference: PhantomData,
+        }
     }
 }
 
 impl<'s> sop::Load<'s, SQOP<'s>> for Keys<'s> {
-    fn from_reader(sop: &'s SQOP, source: &mut (dyn io::Read + Send + Sync))
+    fn from_reader(_sop: &'s SQOP, source: &mut (dyn io::Read + Send + Sync))
                    -> Result<Self>
     where
         Self: Sized,
     {
-        Ok(Keys {
-            sop,
-            keys: CertParser::from_reader(source).map_err(sop_error)?
-                .collect::<openpgp::Result<Vec<openpgp::Cert>>>()
-                .map_err(sop_error)?,
-        })
+        CertParser::from_reader(source).map_err(sop_error)?
+            .collect::<openpgp::Result<Vec<openpgp::Cert>>>()
+            .map(Into::into)
+            .map_err(sop_error)
     }
 }
 
@@ -195,18 +199,12 @@ impl sop::Save for Keys<'_> {
 
 /// A collection of signatures.
 pub struct Sigs<'s> {
-    sop: &'s SQOP<'s>,
     data: Vec<u8>,
-}
-
-impl<'s> sop::plumbing::SopRef<'s, SQOP<'s>> for Sigs<'s> {
-    fn sop(&self) -> &'s SQOP<'s> {
-        self.sop
-    }
+    ghostly_reference: PhantomData<&'s ()>
 }
 
 impl<'s> sop::Load<'s, SQOP<'s>> for Sigs<'s> {
-    fn from_reader(sop: &'s SQOP, source: &mut (dyn io::Read + Send + Sync))
+    fn from_reader(_sop: &'s SQOP, source: &mut (dyn io::Read + Send + Sync))
                    -> Result<Self>
     where
         Self: Sized,
@@ -214,8 +212,8 @@ impl<'s> sop::Load<'s, SQOP<'s>> for Sigs<'s> {
         let mut data = vec![];
         source.read_to_end(&mut data)?;
         Ok(Sigs {
-            sop,
             data,
+            ghostly_reference: PhantomData,
         })
     }
 }
@@ -233,11 +231,11 @@ impl sop::Save for Sigs<'_> {
         }
 
         if armored {
-            self.sop.armor()?
+            SQOP::default().armor()?
                 .data(&mut Cursor::new(&self.data))?
                 .to_writer(sink)?;
         } else {
-            self.sop.dearmor()?
+            SQOP::default().dearmor()?
                 .data(&mut Cursor::new(&self.data))?
                 .to_writer(sink)?;
         }
@@ -455,10 +453,7 @@ impl<'s> sop::ops::GenerateKey<'s, SQOP<'s>, Keys<'s>> for GenerateKey<'s> {
         }
         let (key, _) = builder.generate().map_err(sop_error)?;
 
-        Ok(Keys {
-            sop: self.sqop,
-            keys: vec![key],
-        })
+        Ok(vec![key].into())
     }
 }
 
@@ -494,7 +489,7 @@ impl<'s> sop::ops::ChangeKeyPassword<'s, SQOP<'s>, Keys<'s>> for ChangeKeyPasswo
         Ok(self)
     }
 
-    fn keys(self: Box<Self>, keys: &Keys) -> Result<Keys<'s>> {
+    fn keys(self: Box<Self>, keys: &Keys<'s>) -> Result<Keys<'s>> {
         let mut result = vec![];
 
         for key in keys.keys.clone() {
@@ -549,10 +544,7 @@ impl<'s> sop::ops::ChangeKeyPassword<'s, SQOP<'s>, Keys<'s>> for ChangeKeyPasswo
             result.push(key);
         }
 
-        Ok(Keys {
-            sop: self.sqop,
-            keys: result,
-        })
+        Ok(result.into())
     }
 }
 
@@ -580,7 +572,7 @@ impl<'s> sop::ops::RevokeKey<'s, SQOP<'s>, Certs<'s>, Keys<'s>> for RevokeKey<'s
         Ok(self)
     }
 
-    fn keys(self: Box<Self>, keys: &Keys) -> Result<Certs<'s>> {
+    fn keys(self: Box<Self>, keys: &Keys<'s>) -> Result<Certs<'s>> {
         let mut results = vec![];
         for key in &keys.keys {
             // Get the primary singer.
@@ -618,10 +610,7 @@ impl<'s> sop::ops::RevokeKey<'s, SQOP<'s>, Certs<'s>, Keys<'s>> for RevokeKey<'s
                          .strip_secret_key_material());
         }
 
-        Ok(Certs {
-            sop: self.sqop,
-            certs: results,
-        })
+        Ok(results.into())
     }
 }
 
@@ -639,16 +628,15 @@ impl<'s> ExtractCert<'s> {
 }
 
 impl<'s> sop::ops::ExtractCert<'s, SQOP<'s>, Certs<'s>, Keys<'s>> for ExtractCert<'s> {
-    fn keys(self: Box<Self>, keys: &Keys) -> Result<Certs<'s>> {
-        Ok(Certs {
-            sop: self.sqop,
-            certs: keys.keys.iter()
-                .map(|c| c.clone().strip_secret_key_material())
-                .collect::<Vec<_>>(),
-        })
+    fn keys(self: Box<Self>, keys: &Keys<'s>) -> Result<Certs<'s>> {
+        Ok(keys.keys.iter()
+           .map(|c| c.clone().strip_secret_key_material())
+           .collect::<Vec<_>>()
+           .into())
     }
 }
 
+#[derive(Clone)]
 struct Sign<'s> {
     sqop: &'s SQOP<'s>,
     mode: SignAs,
@@ -679,7 +667,7 @@ impl<'s> Sign<'s> {
 }
 
 impl Sign<'_> {
-    fn add_signing_keys(&mut self, keys: &Keys) -> Result<()> {
+    fn add_signing_keys(&mut self, keys: &Keys<'_>) -> Result<()> {
         for key in &keys.keys {
             self.add_signing_cert(key)?;
         }
@@ -770,7 +758,7 @@ impl<'s> sop::ops::Sign<'s, SQOP<'s>, Keys<'s>, Sigs<'s>> for Sign<'s> {
         self
     }
 
-    fn keys(mut self: Box<Self>, keys: &Keys)
+    fn keys(mut self: Box<Self>, keys: &Keys<'s>)
             -> Result<Box<dyn sop::ops::Sign<'s, SQOP<'s>, Keys<'s>, Sigs<'s>> + 's>> {
         self.add_signing_keys(keys)?;
         Ok(self)
@@ -852,7 +840,7 @@ impl<'s> sop::ops::Verify<'s, SQOP<'s>, Certs<'s>, Sigs<'s>> for Verify<'s> {
         self
     }
 
-    fn certs(mut self: Box<Self>, cert: &Certs)
+    fn certs(mut self: Box<Self>, cert: &Certs<'s>)
              -> Result<Box<dyn sop::ops::Verify<'s, SQOP<'s>, Certs<'s>, Sigs<'s>> + 's>> {
         for cert in &cert.certs {
             self.certs.push(cert.clone());
@@ -860,7 +848,7 @@ impl<'s> sop::ops::Verify<'s, SQOP<'s>, Certs<'s>, Sigs<'s>> for Verify<'s> {
         Ok(self)
     }
 
-    fn signatures<'sigs>(self: Box<Self>, signatures: &'sigs Sigs)
+    fn signatures<'sigs>(self: Box<Self>, signatures: &'sigs Sigs<'s>)
                          -> Result<Box<dyn sop::ops::VerifySignatures<'sigs> + 'sigs>>
     where
         's: 'sigs,
@@ -1007,7 +995,7 @@ impl<'s> sop::ops::Encrypt<'s, SQOP<'s>, Certs<'s>, Keys<'s>> for Encrypt<'s> {
     }
 
     fn sign_with_keys(mut self: Box<Self>,
-                      keys: &Keys)
+                      keys: &Keys<'s>)
                       -> Result<Box<dyn sop::ops::Encrypt<'s, SQOP<'s>, Certs<'s>, Keys<'s>> + 's>> {
         self.sign.add_signing_keys(keys)?;
         Ok(self)
@@ -1025,7 +1013,7 @@ impl<'s> sop::ops::Encrypt<'s, SQOP<'s>, Certs<'s>, Keys<'s>> for Encrypt<'s> {
         Ok(self)
     }
 
-    fn with_certs(mut self: Box<Self>, certs: &Certs)
+    fn with_certs(mut self: Box<Self>, certs: &Certs<'s>)
                   -> Result<Box<dyn sop::ops::Encrypt<'s, SQOP<'s>, Certs<'s>, Keys<'s>> + 's>> {
         for cert in &certs.certs {
             self = self.add_cert(cert)?;
@@ -1143,7 +1131,7 @@ impl<'s> sop::ops::Decrypt<'s, SQOP<'s>, Certs<'s>, Keys<'s>> for Decrypt<'s> {
     }
 
     fn verify_with_certs(mut self: Box<Self>,
-                         certs: &Certs)
+                         certs: &Certs<'s>)
                          -> Result<Box<dyn sop::ops::Decrypt<'s, SQOP<'s>, Certs<'s>, Keys<'s>> + 's>> {
         for cert in &certs.certs {
             self.verify.certs.push(cert.clone());
@@ -1163,7 +1151,7 @@ impl<'s> sop::ops::Decrypt<'s, SQOP<'s>, Certs<'s>, Keys<'s>> for Decrypt<'s> {
         Ok(self)
     }
 
-    fn with_keys(mut self: Box<Self>, keys: &Keys)
+    fn with_keys(mut self: Box<Self>, keys: &Keys<'s>)
                  -> Result<Box<dyn sop::ops::Decrypt<'s, SQOP<'s>, Certs<'s>, Keys<'s>> + 's>> {
         for key in &keys.keys {
             self.keys.push(key.clone());
@@ -1498,8 +1486,8 @@ impl<'s> sop::ops::Ready<Sigs<'s>> for InlineDetachReady<'s, '_> {
         signature_sink.finalize().map_err(sop_error)?;
 
         Ok(Sigs {
-            sop: self.inline_detach.sqop,
             data: signatures,
+            ghostly_reference: PhantomData,
         })
     }
 }
@@ -1537,7 +1525,7 @@ impl<'s> sop::ops::InlineVerify<'s, SQOP<'s>, Certs<'s>> for InlineVerify<'s> {
         self
     }
 
-    fn certs(mut self: Box<Self>, certs: &Certs)
+    fn certs(mut self: Box<Self>, certs: &Certs<'s>)
              -> Result<Box<dyn sop::ops::InlineVerify<'s, SQOP<'s>, Certs<'s>> + 's>> {
         for cert in &certs.certs {
             self.certs.push(cert.clone());
@@ -1614,7 +1602,7 @@ impl<'s> sop::ops::InlineSign<'s, SQOP<'s>, Keys<'s>> for InlineSign<'s> {
         self
     }
 
-    fn keys(mut self: Box<Self>, keys: &Keys)
+    fn keys(mut self: Box<Self>, keys: &Keys<'s>)
            -> Result<Box<dyn sop::ops::InlineSign<'s, SQOP<'s>, Keys<'s>> + 's>> {
         self.sign.add_signing_keys(keys)?;
         Ok(self)
