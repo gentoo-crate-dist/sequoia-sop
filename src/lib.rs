@@ -800,6 +800,7 @@ impl<'s> sop::ops::Sign<'s, SQOP<'s>, Keys<'s>, Sigs<'s>> for Sign<'s> {
     }
 }
 
+#[derive(Clone)]
 struct Verify<'s> {
     sqop: &'s SQOP<'s>,
     verbose: bool,
