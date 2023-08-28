@@ -1,5 +1,5 @@
 VPATH=../../sop-rs
-CFLAGS=-I../../openpgp-stateless-cli
+CFLAGS=-I../../openpgp-stateless-cli -O0 -ggdb -Wall
 LDFLAGS=-Ltarget/debug
 LDLIBS=-lsequoia_sop_c
 
