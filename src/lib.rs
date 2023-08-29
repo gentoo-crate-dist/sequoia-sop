@@ -938,7 +938,9 @@ impl<'s> Encrypt<'s> {
                 SymmetricAlgorithm::CAST5,
                 SymmetricAlgorithm::IDEA,
                 SymmetricAlgorithm::TripleDES,
-            ].iter().copied().filter(|h| h.is_supported()).collect(),
+            ].iter().copied().filter(|&a| {
+                a.is_supported() && sqop.policy.symmetric_algorithm(a).is_ok()
+            }).collect(),
             recipients: Default::default(),
             passwords: Default::default(),
         }))
