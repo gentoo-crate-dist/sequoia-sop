@@ -1077,7 +1077,7 @@ impl<'s> sop::ops::Ready<Option<sop::SessionKey>> for EncryptReady<'s> {
             SessionKey::new(cipher.key_size().map_err(sop_error)?);
         let sop_session_key = sop::SessionKey::new(cipher, &session_key)?;
         let mut message =
-            Encryptor::with_session_key(message, cipher, session_key)
+            Encryptor2::with_session_key(message, cipher, session_key)
             .map_err(sop_error)?
             .add_recipients(self.encrypt.recipients.iter())
             .add_passwords(
@@ -1275,7 +1275,7 @@ impl<'s> sop::ops::Ready for ArmorReady<'s> {
                 -> Result<()> {
         let _ = self.armor.sqop;
 
-        let mut source = Generic::new(self.data, None).as_boxed();
+        let mut source = Generic::new(self.data, None).into_boxed();
 
         // Peek at the data to see if it is already armored.
         let armored =
@@ -1306,7 +1306,7 @@ impl<'s> sop::ops::Ready for ArmorReady<'s> {
         // We make no effort to verify the packet structure.
         let mut sink = match self.armor.label {
             ArmorLabel::Auto => {
-                source = Dup::new(source).as_boxed();
+                source = Dup::new(source).into_boxed();
                 let ppr = PacketParser::from_reader(&mut source)
                     .map_err(sop_error)?;
                 let kind =
@@ -1380,7 +1380,7 @@ impl sop::ops::Ready for DearmorReady<'_> {
 
         // Peek at the data to see if it is really armored.  We make
         // no effort to verify the packet structure.
-        let mut source = Generic::new(self.data, None).as_boxed();
+        let mut source = Generic::new(self.data, None).into_boxed();
         let armored =
             source.data(1)?.get(0).map(|b| b & 0x80 == 0).unwrap_or(false);
 
