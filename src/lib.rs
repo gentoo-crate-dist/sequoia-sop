@@ -1210,7 +1210,7 @@ impl<'s> sop::ops::Ready<(Option<sop::SessionKey>, Vec<sop::ops::Verification>)>
             } else {
                 Box::new(io::sink())
             },
-            if self.decrypt.verify.certs.is_empty() { 0 } else { 1 },
+            0,
             self.decrypt.verify.not_before,
             self.decrypt.verify.not_after,
             self.decrypt.verify.certs);
