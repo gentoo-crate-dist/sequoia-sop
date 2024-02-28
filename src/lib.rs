@@ -935,9 +935,6 @@ impl<'s> Encrypt<'s> {
                 SymmetricAlgorithm::Camellia128,
                 SymmetricAlgorithm::Blowfish,
                 SymmetricAlgorithm::Twofish,
-                SymmetricAlgorithm::CAST5,
-                SymmetricAlgorithm::IDEA,
-                SymmetricAlgorithm::TripleDES,
             ].iter().copied().filter(|&a| {
                 a.is_supported() && sqop.policy.symmetric_algorithm(a).is_ok()
             }).collect(),
