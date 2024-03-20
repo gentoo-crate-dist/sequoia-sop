@@ -84,7 +84,7 @@ windows-msvc:
     - rustc --version --verbose
     - cargo --version
   script:
-    - cargo test --no-default-features --features cli,crypto-cng,compression
+    - cargo test --no-default-features --features cli,sequoia-openpgp/crypto-cng,sequoia-openpgp/compression
   after_script: []
   variables:
     CFLAGS: "" # Silence some C warnings when compiling with MSVC

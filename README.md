@@ -35,3 +35,33 @@ a message
 
 Here, we encrypt a message with Julia's certificate, and decrypt it
 with her key.
+
+# Selecting different crypto backends
+
+Sequoia PGP supports a number of [different crypto libraries].  In
+order to select one for use with this crate, disable the default
+features and explicitly select a backend.
+
+  [different crypto libraries]: https://gitlab.com/sequoia-pgp/sequoia/-/tree/main/openpgp#crypto-backends
+
+To select an alternate crypto backend when building the cli frontend,
+for example the OpenSSL backend, do:
+
+```sh
+$ cargo build --no-default-features --features cli,sequoia-openpgp/compression,sequoia-openpgp/crypto-openssl
+```
+
+Or to install it from crates.io:
+
+```sh
+$ cargo install sequoia-sop --no-default-features --features cli,sequoia-openpgp/compression,sequoia-openpgp/crypto-openssl
+```
+
+In order to use it from Rust, depend sequoia-openpgp and select a
+backend, like so:
+
+```toml
+[dependencies]
+sop = { version = "*", default-features = false }
+sequoia-openpgp = { version = "*", default-features = false, features = ["compression", "crypto-openssl"] }
+```
