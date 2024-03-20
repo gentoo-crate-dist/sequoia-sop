@@ -2082,7 +2082,11 @@ fn sop_error(e: anyhow::Error) -> Error {
     };
 
     let e = match e.downcast::<io::Error>() {
-        Ok(e) => return e.into(),
+        Ok(e) => return if e.kind() == io::ErrorKind::UnexpectedEof {
+            Error::BadData
+        } else {
+            e.into()
+        },
         Err(e) => e,
     };
 
@@ -2185,6 +2189,26 @@ mod tests {
             .ciphertext(&mut ciphertext_cur)?
             .to_vec()?;
         assert_eq!(&plaintext, statement);
+
+        Ok(())
+    }
+
+    #[test]
+    fn issue_29() -> Result<()> {
+        let sop = SQOP::default();
+
+        let alice_sec = sop.generate_key()?
+            .userid("Alice Lovelace <alice@openpgp.example>")
+            .generate()?;
+        let alice_pgp = sop.extract_cert()?
+            .keys(&alice_sec)?;
+
+        let no_signature = b"\n";
+        assert!(matches!(sop.inline_verify()?
+                         .certs(&alice_pgp)?
+                         .message(&mut Cursor::new(&no_signature))
+                         .and_then(|ready| ready.to_vec()),
+                         Err(sop::errors::Error::BadData)));
 
         Ok(())
     }
