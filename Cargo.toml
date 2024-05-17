@@ -20,7 +20,7 @@ maintenance = { status = "actively-developed" }
 
 [dependencies]
 sop = "0.7"
-sequoia-openpgp = { version = "1.17", default-features = false }
+sequoia-openpgp = { version = "1.20", default-features = false }
 anyhow = "1.0.18"
 
 [build-dependencies]
