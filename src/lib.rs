@@ -281,6 +281,9 @@ impl<'s> sop::SOP<'s> for SQOP<'s> {
     fn version(&'s self) -> Result<Box<dyn sop::ops::Version + 's>> {
         Ok(Box::new(Version {}))
     }
+    fn sopv_version(&'s self) -> Result<&'static str> {
+        Ok("1.0")
+    }
     fn generate_key(&'s self)
         -> Result<Box<dyn sop::ops::GenerateKey<SQOP, Keys> + 's>>
     {
