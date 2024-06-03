@@ -65,3 +65,10 @@ backend, like so:
 sop = { version = "*", default-features = false }
 sequoia-openpgp = { version = "*", default-features = false, features = ["compression", "crypto-openssl"] }
 ```
+
+# Shell completions
+
+By default shell completions are put into the `cargo` target
+directory, but the exact location is unpredictable.  To write the
+assets to a predictable location, set the environment variable
+`ASSET_OUT_DIR` to a suitable location.
