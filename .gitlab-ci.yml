@@ -19,7 +19,7 @@ trixie:
   tags:
     - linux
   stage: build
-  image: 192.168.122.1:5000/sequoia-pgp/build-docker-image/trixie:latest
+  image: jampot.sequoia-pgp.org/sequoia-pgp/build-docker-image/trixie:latest
   dependencies:
     - codespell
 
@@ -62,7 +62,7 @@ codespell:
   tags:
     - linux
   stage: pre-check
-  image: 192.168.122.1:5000/sequoia-pgp/build-docker-image/trixie:latest
+  image: jampot.sequoia-pgp.org/sequoia-pgp/build-docker-image/trixie:latest
 
   before_script:
     - codespell --version
@@ -78,7 +78,7 @@ windows-msvc:
     - win
     - win2019
   stage: build
-  image: 192.168.122.1:5000/sequoia-pgp/build-docker-image/windows-msvc
+  image: jampot.sequoia-pgp.org/sequoia-pgp/build-docker-image/windows-msvc
   before_script:
     - rustup default stable
     - rustc --version --verbose
