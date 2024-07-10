@@ -5,19 +5,20 @@ use std::{
     path::PathBuf,
 };
 
-#[cfg(feature = "cli")]
 fn main() {
+   #[cfg(feature = "cli")]
     sop::cli::write_shell_completions(
         "sqop", asset_out_dir("shell-completions").unwrap()).unwrap();
+   #[cfg(feature = "cliv")]
+    sop::cli::write_shell_completions(
+        "sqopv", asset_out_dir("shell-completions").unwrap()).unwrap();
 }
-
-#[cfg(not(feature = "cli"))]
-fn main() {}
 
 /// Variable name to control the asset out directory with.
 const ASSET_OUT_DIR: &str = "ASSET_OUT_DIR";
 
 /// Returns the directory to write the given assets to.
+#[allow(dead_code)]
 fn asset_out_dir(asset: &str) -> Result<PathBuf, Box<dyn Error>> {
     println!("cargo:rerun-if-env-changed={}", ASSET_OUT_DIR);
     let outdir: PathBuf =

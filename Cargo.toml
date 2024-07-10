@@ -19,12 +19,12 @@ gitlab = { repository = "sequoia-pgp/sequoia-sop" }
 maintenance = { status = "actively-developed" }
 
 [dependencies]
-sop = "0.7.1"
+sop = "0.7.2"
 sequoia-openpgp = { version = "1.20", default-features = false }
 anyhow = "1.0.18"
 
 [build-dependencies]
-sop = "0.7.1"
+sop = "0.7.2"
 
 [lib]
 
@@ -33,6 +33,12 @@ name = "sqop"
 path = "src/main.rs"
 required-features = ["cli"]
 
+[[bin]]
+name = "sqopv"
+path = "src/main.rs"
+required-features = ["cliv"]
+
 [features]
 default = ["sequoia-openpgp/default"]
 cli = ["sop/cli"]
+cliv = ["sop/cliv"]
