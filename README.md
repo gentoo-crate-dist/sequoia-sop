@@ -16,6 +16,12 @@ interoperability test suite].
 To build the cli frontend, enable the "cli" feature, e.g. using `cargo
 build --features=cli` or `cargo install sequoia-sop --features=cli`.
 
+To build the cli frontend restricted to the [verification subset of
+SOP], enable the "cliv" feature, e.g. using `cargo build
+--features=cliv` or `cargo install sequoia-sop --features=cliv`.
+
+[verification subset of SOP]: https://dkg.gitlab.io/openpgp-stateless-cli/#name-sopv-subset
+
 To demonstrate SOP, let's generate a key, and encrypt and decrypt a
 message:
 
