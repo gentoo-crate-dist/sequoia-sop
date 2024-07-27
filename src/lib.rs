@@ -384,7 +384,7 @@ impl<'s> GenerateKey<'s> {
     const PROFILE_RFC4880: &'static str = "rfc4880";
     const PROFILES: &'static [(&'static str, &'static str)] = &[
         (Self::PROFILE_EDDSA, "use EdDSA & ECDH over Cv25519"),
-        (Self::PROFILE_RFC4880, "use algorithms from RFC 4880"),
+        (Self::PROFILE_RFC4880, "use RSA with 3072 bit keys"),
     ];
 
     fn new(sqop: &'s SQOP) -> Result<Box<dyn sop::ops::GenerateKey<'s, SQOP<'s>, Keys<'s>> + 's>> {
@@ -920,7 +920,7 @@ struct Encrypt<'s> {
 impl<'s> Encrypt<'s> {
     const PROFILE_RFC4880: &'static str = "rfc4880";
     const PROFILES: &'static [(&'static str, &'static str)] = &[
-        (Self::PROFILE_RFC4880, "use algorithms from RFC 4880"),
+        (Self::PROFILE_RFC4880, "use SEIPDv1"),
     ];
 
     fn new(sqop: &'s SQOP) -> Result<Box<dyn sop::ops::Encrypt<'s, SQOP<'s>, Certs<'s>, Keys<'s>> + 's>> {
