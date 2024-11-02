@@ -58,6 +58,27 @@ all_commits:
     RUSTFLAGS: -D warnings -A unused-parens
     GIT_STRATEGY: clone
 
+sop-tests:
+  stage: test
+  image: jampot.sequoia-pgp.org/sequoia-pgp/build-docker-image/trixie:latest
+  needs: ["trixie"]
+
+  script:
+    - cargo build --features cli
+    - mkdir spec
+    - git init spec
+    - cd spec
+    - git remote add origin https://gitlab.com/dkg/openpgp-stateless-cli
+    - git fetch --depth 1 origin d4870845e925b85bbb0250c9fcc8369f2b191078
+    - git checkout FETCH_HEAD
+    - bash test/evaluate $CARGO_TARGET_DIR/debug/sqop
+    - sh test/simple-sop-test $CARGO_TARGET_DIR/debug/sqop
+
+  variables:
+    CARGO_TARGET_DIR: $CI_PROJECT_DIR/../target.$CI_CONCURRENT_ID.all_commits
+    RUSTFLAGS: -D warnings -A unused-parens
+    GIT_STRATEGY: clone
+
 codespell:
   tags:
     - linux
