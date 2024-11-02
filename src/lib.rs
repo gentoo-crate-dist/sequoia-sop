@@ -1319,7 +1319,8 @@ impl<'s> sop::ops::Ready for ArmorReady<'s> {
                             armor::Kind::SecretKey,
                         Packet::PublicKey(_) =>
                             armor::Kind::PublicKey,
-                        Packet::PKESK(_) | Packet::SKESK(_) =>
+                        Packet::PKESK(_) | Packet::SKESK(_)
+                            | Packet::OnePassSig(_) =>
                             armor::Kind::Message,
                             _ => return Err(Error::BadData),
                         }
