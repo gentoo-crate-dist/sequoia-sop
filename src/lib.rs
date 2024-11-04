@@ -27,7 +27,7 @@
 //!   [Sequoia PGP]: https://sequoia-pgp.org
 
 use std::{
-    collections::HashMap,
+    collections::{BTreeMap, BTreeSet, HashMap},
     io::{self, Cursor, Write},
     time::SystemTime,
 };
@@ -81,10 +81,15 @@ use sop::{
     plumbing::PasswordsAreHumanReadable,
 };
 
+#[macro_use]
+mod macros;
+mod version;
+
 /// A collection of certs.
 pub struct Certs<'s> {
     sop: &'s SQOP<'s>,
     certs: Vec<openpgp::Cert>,
+    source_name: Option<String>,
 }
 
 impl<'s> sop::plumbing::SopRef<'s, SQOP<'s>> for Certs<'s> {
@@ -94,7 +99,8 @@ impl<'s> sop::plumbing::SopRef<'s, SQOP<'s>> for Certs<'s> {
 }
 
 impl<'s> sop::Load<'s, SQOP<'s>> for Certs<'s> {
-    fn from_reader(sop: &'s SQOP, source: &mut (dyn io::Read + Send + Sync))
+    fn from_reader(sop: &'s SQOP, source: &mut (dyn io::Read + Send + Sync),
+                   source_name: Option<String>)
                    -> Result<Self>
     where
         Self: Sized,
@@ -104,7 +110,12 @@ impl<'s> sop::Load<'s, SQOP<'s>> for Certs<'s> {
             certs: CertParser::from_reader(source).map_err(sop_error)?
                 .collect::<openpgp::Result<Vec<openpgp::Cert>>>()
                 .map_err(sop_error)?,
+            source_name,
         })
+    }
+
+    fn source_name(&self) -> Option<&str> {
+        self.source_name.as_ref().map(|s| s.as_str())
     }
 }
 
@@ -141,6 +152,7 @@ impl sop::Save for Certs<'_> {
 pub struct Keys<'s> {
     sop: &'s SQOP<'s>,
     keys: Vec<openpgp::Cert>,
+    source_name: Option<String>,
 }
 
 impl<'s> sop::plumbing::SopRef<'s, SQOP<'s>> for Keys<'s> {
@@ -150,7 +162,8 @@ impl<'s> sop::plumbing::SopRef<'s, SQOP<'s>> for Keys<'s> {
 }
 
 impl<'s> sop::Load<'s, SQOP<'s>> for Keys<'s> {
-    fn from_reader(sop: &'s SQOP, source: &mut (dyn io::Read + Send + Sync))
+    fn from_reader(sop: &'s SQOP, source: &mut (dyn io::Read + Send + Sync),
+                   source_name: Option<String>)
                    -> Result<Self>
     where
         Self: Sized,
@@ -160,7 +173,12 @@ impl<'s> sop::Load<'s, SQOP<'s>> for Keys<'s> {
             keys: CertParser::from_reader(source).map_err(sop_error)?
                 .collect::<openpgp::Result<Vec<openpgp::Cert>>>()
                 .map_err(sop_error)?,
+            source_name,
         })
+    }
+
+    fn source_name(&self) -> Option<&str> {
+        self.source_name.as_ref().map(|s| s.as_str())
     }
 }
 
@@ -197,6 +215,7 @@ impl sop::Save for Keys<'_> {
 pub struct Sigs<'s> {
     sop: &'s SQOP<'s>,
     data: Vec<u8>,
+    source_name: Option<String>,
 }
 
 impl<'s> sop::plumbing::SopRef<'s, SQOP<'s>> for Sigs<'s> {
@@ -206,7 +225,8 @@ impl<'s> sop::plumbing::SopRef<'s, SQOP<'s>> for Sigs<'s> {
 }
 
 impl<'s> sop::Load<'s, SQOP<'s>> for Sigs<'s> {
-    fn from_reader(sop: &'s SQOP, source: &mut (dyn io::Read + Send + Sync))
+    fn from_reader(sop: &'s SQOP, source: &mut (dyn io::Read + Send + Sync),
+                   source_name: Option<String>)
                    -> Result<Self>
     where
         Self: Sized,
@@ -216,7 +236,12 @@ impl<'s> sop::Load<'s, SQOP<'s>> for Sigs<'s> {
         Ok(Sigs {
             sop,
             data,
+            source_name,
         })
+    }
+
+    fn source_name(&self) -> Option<&str> {
+        self.source_name.as_ref().map(|s| s.as_str())
     }
 }
 
@@ -250,6 +275,7 @@ impl sop::Save for Sigs<'_> {
 ///   [Sequoia PGP]: https://sequoia-pgp.org
 pub struct SQOP<'s> {
     policy: &'s dyn openpgp::policy::Policy,
+    debug: bool,
 }
 
 impl Default for SQOP<'_> {
@@ -269,6 +295,7 @@ impl<'s> SQOP<'s> {
     pub fn with_policy(policy: &'s dyn Policy) -> Self {
         SQOP {
             policy,
+            debug: false,
         }
     }
 }
@@ -278,8 +305,11 @@ impl<'s> sop::SOP<'s> for SQOP<'s> {
     type Certs = Certs<'s>;
     type Sigs = Sigs<'s>;
 
-    fn version(&'s self) -> Result<Box<dyn sop::ops::Version + 's>> {
-        Ok(Box::new(Version {}))
+    fn debug(&mut self, enable: bool) {
+        self.debug = enable;
+    }
+    fn version(&self) -> Result<Box<dyn sop::ops::Version>> {
+        Ok(Box::new(version::Version {}))
     }
     fn sopv_version(&'s self) -> Result<&'static str> {
         Ok("1.0")
@@ -303,6 +333,26 @@ impl<'s> sop::SOP<'s> for SQOP<'s> {
         -> Result<Box<dyn sop::ops::ExtractCert<SQOP, Certs, Keys> + 's>>
     {
         ExtractCert::new(self)
+    }
+    fn update_key(&'s self)
+        -> Result<Box<dyn sop::ops::UpdateKey<Self, Self::Certs, Self::Keys> + 's>>
+    {
+        Err(Error::NotImplemented)
+    }
+    fn merge_certs(&'s self)
+        -> Result<Box<dyn sop::ops::MergeCerts<Self, Self::Certs> + 's>>
+    {
+        MergeCerts::new(self)
+    }
+    fn certify_userid(&'s self)
+        -> Result<Box<dyn sop::ops::CertifyUserID<Self, Self::Certs, Self::Keys> + 's>>
+    {
+        CertifyUserID::new(self)
+    }
+    fn validate_userid(&'s self)
+        -> Result<Box<dyn sop::ops::ValidateUserID<Self, Self::Certs> + 's>>
+    {
+        ValidateUserID::new(self)
     }
     fn sign(&'s self)
         -> Result<Box<dyn sop::ops::Sign<SQOP, Keys, Sigs> + 's>>
@@ -342,31 +392,6 @@ impl<'s> sop::SOP<'s> for SQOP<'s> {
         -> Result<Box<dyn sop::ops::InlineSign<SQOP, Keys> + 's>>
     {
         InlineSign::new(self)
-    }
-}
-
-struct Version {}
-
-impl sop::ops::Version<'_> for Version {
-    fn frontend(&self) -> Result<sop::ops::VersionInfo> {
-        Ok(sop::ops::VersionInfo {
-            name: "sqop".into(),
-            version: env!("CARGO_PKG_VERSION").into(),
-        })
-    }
-
-    fn backend(&self) -> Result<sop::ops::VersionInfo> {
-        Ok(sop::ops::VersionInfo {
-            name: "Sequoia".into(),
-            version: openpgp::VERSION.into(),
-        })
-    }
-
-    fn extended(&self) -> Result<String> {
-        Ok(vec![
-            openpgp::crypto::backend(),
-            format!("Sequoia {}", openpgp::VERSION),
-        ].join("\n"))
     }
 }
 
@@ -461,6 +486,7 @@ impl<'s> sop::ops::GenerateKey<'s, SQOP<'s>, Keys<'s>> for GenerateKey<'s> {
         Ok(Keys {
             sop: self.sqop,
             keys: vec![key],
+            source_name: None,
         })
     }
 }
@@ -555,6 +581,7 @@ impl<'s> sop::ops::ChangeKeyPassword<'s, SQOP<'s>, Keys<'s>> for ChangeKeyPasswo
         Ok(Keys {
             sop: self.sqop,
             keys: result,
+            source_name: None,
         })
     }
 }
@@ -624,6 +651,7 @@ impl<'s> sop::ops::RevokeKey<'s, SQOP<'s>, Certs<'s>, Keys<'s>> for RevokeKey<'s
         Ok(Certs {
             sop: self.sqop,
             certs: results,
+            source_name: None,
         })
     }
 }
@@ -648,7 +676,309 @@ impl<'s> sop::ops::ExtractCert<'s, SQOP<'s>, Certs<'s>, Keys<'s>> for ExtractCer
             certs: keys.keys.iter()
                 .map(|c| c.clone().strip_secret_key_material())
                 .collect::<Vec<_>>(),
+            source_name: None,
         })
+    }
+}
+
+struct MergeCerts<'s> {
+    #[allow(dead_code)]
+    sqop: &'s SQOP<'s>,
+    updates: BTreeMap<openpgp::Fingerprint, openpgp::Cert>,
+}
+
+impl<'s> MergeCerts<'s> {
+    fn new(sqop: &'s SQOP) -> Result<Box<dyn sop::ops::MergeCerts<'s, SQOP<'s>, Certs<'s>> + 's>> {
+        Ok(Box::new(MergeCerts {
+            sqop,
+            updates: Default::default(),
+        }))
+    }
+
+    fn merge_internal(&mut self, updates: &Certs) -> Result<()> {
+        use std::collections::btree_map::Entry;
+
+        for cert in updates.certs.iter().cloned() {
+            match self.updates.entry(cert.fingerprint()) {
+                Entry::Occupied(e) => {
+                    let e = e.into_mut();
+                    *e = e.clone().merge_public(cert).map_err(sop_error)?;
+                },
+                Entry::Vacant(e) => {
+                    e.insert(cert);
+                },
+            }
+        }
+
+        Ok(())
+    }
+}
+
+impl<'s> sop::ops::MergeCerts<'s, SQOP<'s>, Certs<'s>> for MergeCerts<'s> {
+    fn merge_updates(mut self: Box<Self>, updates: &Certs)
+                     -> Result<Box<dyn sop::ops::MergeCerts<'s, SQOP<'s>, Certs<'s>> + 's>> {
+        self.merge_internal(updates)?;
+        Ok(self)
+    }
+
+    fn merge(mut self: Box<Self>, certs: &Certs) -> Result<Certs<'s>> {
+        let fps: BTreeSet<_> =
+            certs.certs.iter().map(openpgp::Cert::fingerprint).collect();
+        self.merge_internal(certs)?;
+
+        Ok(Certs {
+            sop: self.sqop,
+            certs: fps.iter()
+                .map(|fp| self.updates.get(fp).expect("have ingested certs").clone())
+                .collect(),
+            source_name: None,
+        })
+    }
+}
+
+struct CertifyUserID<'s> {
+    #[allow(dead_code)]
+    sqop: &'s SQOP<'s>,
+    userids: Vec<String>,
+    with_key_password: Vec<Password>,
+    no_require_self_sig: bool,
+    certifiers: Vec<openpgp::Cert>,
+}
+
+impl<'s> CertifyUserID<'s> {
+    fn new(sqop: &'s SQOP) -> Result<Box<dyn sop::ops::CertifyUserID<'s, SQOP<'s>, Certs<'s>, Keys<'s>> + 's>> {
+        Ok(Box::new(CertifyUserID {
+            sqop,
+            userids: Default::default(),
+            with_key_password: Default::default(),
+            no_require_self_sig: false,
+            certifiers: Default::default(),
+        }))
+    }
+}
+
+impl<'s> sop::ops::CertifyUserID<'s, SQOP<'s>, Certs<'s>, Keys<'s>> for CertifyUserID<'s> {
+    fn userid(mut self: Box<Self>, userid: String)
+              -> Box<dyn sop::ops::CertifyUserID<'s, SQOP<'s>, Certs<'s>, Keys<'s>> + 's> {
+        self.userids.push(userid);
+        self
+    }
+
+    fn with_key_password(mut self: Box<Self>, password: Password)
+                         -> Result<Box<dyn sop::ops::CertifyUserID<'s, SQOP<'s>, Certs<'s>, Keys<'s>> + 's>> {
+        self.with_key_password.push(password);
+        Ok(self)
+    }
+
+    fn no_require_self_sig(mut self: Box<Self>)
+                           -> Box<dyn sop::ops::CertifyUserID<'s, SQOP<'s>, Certs<'s>, Keys<'s>> + 's> {
+        self.no_require_self_sig = true;
+        self
+    }
+
+    fn keys(mut self: Box<Self>, keys: &Keys)
+            -> Result<Box<dyn sop::ops::CertifyUserID<'s, SQOP<'s>, Certs<'s>, Keys<'s>> + 's>> {
+        for key in &keys.keys {
+            self.certifiers.push(key.clone());
+        }
+        Ok(self)
+    }
+
+    fn certify(self: Box<Self>, certs: &Certs)-> Result<Certs<'s>> {
+        if self.certifiers.is_empty() {
+            return Err(Error::MissingArg);
+        }
+
+        let mut certifiers = Vec::with_capacity(self.certifiers.len());
+        for cert in &self.certifiers {
+            let vcert =
+                cert.with_policy(self.sqop.policy, None)
+            // XXX: https://gitlab.com/dkg/openpgp-stateless-cli/-/issues/119
+                .map_err(|_| Error::KeyCannotSign)?;
+
+            let mut one = false;
+            for mut key in vcert.keys()
+                .supported()
+                .secret()
+                .alive()
+                .revoked(false)
+                .for_certification()
+                .map(|ka| ka.key().clone())
+            {
+                let algo = key.pk_algo();
+                if key.secret().is_encrypted() {
+                    for p in self.with_key_password.iter()
+                        .flat_map(|p| p.variants())
+                    {
+                        if key.secret_mut().decrypt_in_place(algo, &p.into())
+                            .is_ok()
+                        {
+                            break;
+                        }
+                    }
+                }
+                if ! key.secret().is_encrypted() {
+                    one = true;
+                    // Exactly one certification per supplied key.
+                    certifiers.push(key.into_keypair().map_err(sop_error)?);
+                    break;
+                }
+            }
+
+            if ! one {
+                return Err(Error::KeyIsProtected);
+            }
+        }
+
+        let mut outputs = Vec::new();
+        for cert in &certs.certs {
+            let mut acc = Vec::<openpgp::Packet>::new();
+
+            for new_userid in &self.userids {
+                if ! self.no_require_self_sig
+                    && ! cert.userids().any(|u| u.value() == new_userid.as_bytes())
+                {
+                    // XXX: https://gitlab.com/dkg/openpgp-stateless-cli/-/issues/119
+                    return Err(Error::UnspecifiedFailure);
+                }
+
+                let uid = openpgp::packet::UserID::from(new_userid.as_str());
+                acc.push(uid.clone().into());
+                for certifier in &mut certifiers {
+                    let sig = uid.bind(certifier, cert,
+                                       SignatureBuilder::new(
+                                           SignatureType::PositiveCertification))
+                        .map_err(sop_error)?;
+                    acc.push(sig.into());
+                }
+            }
+
+            outputs.push(cert.clone().insert_packets(acc)
+                         .map_err(sop_error)?);
+        }
+
+        Ok(Certs {
+            sop: self.sqop,
+            certs: outputs,
+            source_name: None,
+        })
+    }
+}
+
+struct ValidateUserID<'s> {
+    #[allow(dead_code)]
+    sqop: &'s SQOP<'s>,
+    trust_roots: Vec<openpgp::Cert>,
+    target_certs: Vec<openpgp::Cert>,
+    validate_at: Option<SystemTime>,
+}
+
+impl<'s> ValidateUserID<'s> {
+    fn new(sqop: &'s SQOP) -> Result<Box<dyn sop::ops::ValidateUserID<'s, SQOP<'s>, Certs<'s>> + 's>> {
+        Ok(Box::new(ValidateUserID {
+            sqop,
+            trust_roots: Default::default(),
+            target_certs: Default::default(),
+            validate_at: Default::default(),
+        }))
+    }
+
+    fn authenticate(&self, userid: &str, email: bool) -> Result<()> {
+        tracer!(self.sqop.debug, "ValidateUserID::authenticate");
+        use sequoia_wot::{FULLY_TRUSTED, Network};
+
+        t!("authenticating {} {:?}",
+           if email { "email" } else { "user ID" }, userid);
+
+        let roots: Vec<_> =
+            self.trust_roots.iter().map(openpgp::Cert::fingerprint).collect();
+        t!("using trust roots {:?}", roots);
+
+        let n = Network::from_cert_refs(
+            self.trust_roots.iter().chain(self.target_certs.iter()),
+            self.sqop.policy,
+            self.validate_at.clone(),
+            &roots[..])
+            .map_err(sop_error)?;
+
+        if ! email {
+            // Match on the user ID as is.
+            let uid = openpgp::packet::UserID::from(userid);
+
+            for cert in &self.target_certs {
+                t!("considering {}", cert.fingerprint());
+
+                let paths =
+                    n.authenticate(&uid, cert.fingerprint(), FULLY_TRUSTED);
+                t!("authenticate({:?}, {}) => {}",
+                   cert.fingerprint(), userid, paths.amount());
+
+                if paths.amount() < FULLY_TRUSTED {
+                    return Err(Error::CertUseridNoMatch);
+                }
+            }
+        } else {
+            // Match on the email addresses.
+            for cert in &self.target_certs {
+                t!("considering {}", cert.fingerprint());
+
+                let mut one = false;
+                for uid in cert.userids()
+                    .filter(|u| u.userid().email2().ok().flatten()
+                            .map(|email| email == userid)
+                            .unwrap_or(false))
+                {
+                    let paths =
+                        n.authenticate(uid.userid(), cert.fingerprint(),
+                                       FULLY_TRUSTED);
+                    t!("authenticate({}, {:?}) => {}",
+                       cert.fingerprint(), userid, paths.amount());
+
+                    if paths.amount() >= FULLY_TRUSTED {
+                        one = true;
+                        break;
+                    }
+                }
+
+                if ! one {
+                    return Err(Error::CertUseridNoMatch);
+                }
+            }
+        }
+
+        Ok(())
+    }
+}
+
+impl<'s> sop::ops::ValidateUserID<'s, SQOP<'s>, Certs<'s>> for ValidateUserID<'s> {
+    fn trust_roots(mut self: Box<Self>, certs: &Certs)
+            -> Result<Box<dyn sop::ops::ValidateUserID<'s, SQOP<'s>, Certs<'s>> + 's>> {
+        for cert in &certs.certs {
+            self.trust_roots.push(cert.clone());
+        }
+        Ok(self)
+    }
+
+    fn target_certs(mut self: Box<Self>, certs: &Certs)
+            -> Result<Box<dyn sop::ops::ValidateUserID<'s, SQOP<'s>, Certs<'s>> + 's>> {
+        for cert in &certs.certs {
+            self.target_certs.push(cert.clone());
+        }
+        Ok(self)
+    }
+
+    fn validate_at(mut self: Box<Self>, at: SystemTime)
+            -> Result<Box<dyn sop::ops::ValidateUserID<'s, SQOP<'s>, Certs<'s>> + 's>> {
+        self.validate_at = Some(at);
+        Ok(self)
+    }
+
+    fn userid(self: Box<Self>, userid: &str) -> Result<()> {
+        self.authenticate(userid, false)
+    }
+
+    fn email(self: Box<Self>, address: &str) -> Result<()> {
+        self.authenticate(address, true)
     }
 }
 
@@ -820,7 +1150,7 @@ struct Verify<'s> {
     verbose: bool,
     not_before: Option<SystemTime>,
     not_after: Option<SystemTime>,
-    certs: Vec<Cert>,
+    certs: CertBag,
 }
 
 impl<'s> Verify<'s> {
@@ -857,9 +1187,7 @@ impl<'s> sop::ops::Verify<'s, SQOP<'s>, Certs<'s>, Sigs<'s>> for Verify<'s> {
 
     fn certs(mut self: Box<Self>, cert: &Certs)
              -> Result<Box<dyn sop::ops::Verify<'s, SQOP<'s>, Certs<'s>, Sigs<'s>> + 's>> {
-        for cert in &cert.certs {
-            self.certs.push(cert.clone());
-        }
+        self.certs.extend_from(cert);
         Ok(self)
     }
 
@@ -1147,9 +1475,7 @@ impl<'s> sop::ops::Decrypt<'s, SQOP<'s>, Certs<'s>, Keys<'s>> for Decrypt<'s> {
     fn verify_with_certs(mut self: Box<Self>,
                          certs: &Certs)
                          -> Result<Box<dyn sop::ops::Decrypt<'s, SQOP<'s>, Certs<'s>, Keys<'s>> + 's>> {
-        for cert in &certs.certs {
-            self.verify.certs.push(cert.clone());
-        }
+        self.verify.certs.extend_from(certs);
         Ok(self)
     }
 
@@ -1503,6 +1829,7 @@ impl<'s> sop::ops::Ready<Sigs<'s>> for InlineDetachReady<'s, '_> {
         Ok(Sigs {
             sop: self.inline_detach.sqop,
             data: signatures,
+            source_name: None,
         })
     }
 }
@@ -1512,7 +1839,7 @@ struct InlineVerify<'s> {
     verbose: bool,
     not_before: Option<SystemTime>,
     not_after: Option<SystemTime>,
-    certs: Vec<Cert>,
+    certs: CertBag,
 }
 
 impl<'s> InlineVerify<'s> {
@@ -1542,9 +1869,7 @@ impl<'s> sop::ops::InlineVerify<'s, SQOP<'s>, Certs<'s>> for InlineVerify<'s> {
 
     fn certs(mut self: Box<Self>, certs: &Certs)
              -> Result<Box<dyn sop::ops::InlineVerify<'s, SQOP<'s>, Certs<'s>> + 's>> {
-        for cert in &certs.certs {
-            self.certs.push(cert.clone());
-        }
+        self.certs.extend_from(certs);
         Ok(self)
     }
 
@@ -1697,6 +2022,46 @@ impl<'s> sop::ops::Ready for InlineSignReady<'s> {
     }
 }
 
+/// Keeps track of certs and their origin.
+#[derive(Default)]
+struct CertBag {
+    certs: BTreeMap<openpgp::Fingerprint, (Cert, Vec<String>)>,
+}
+
+impl CertBag {
+    fn is_empty(&self) -> bool {
+        self.certs.is_empty()
+    }
+
+    fn insert(&mut self, cert: Cert, source_name: Option<&str>) {
+        use std::collections::btree_map::Entry;
+        match self.certs.entry(cert.fingerprint()) {
+            Entry::Occupied(mut e) => {
+                let e = e.get_mut();
+                e.0 = e.0.clone().merge_public(cert)
+                    .expect("merging certs with the same fipr is infallible");
+                if let Some(n) = source_name {
+                    e.1.push(n.into());
+                }
+            },
+            Entry::Vacant(e) => {
+                e.insert((cert,
+                          if let Some(n) = source_name {
+                              vec![n.into()]
+                          } else {
+                              vec![]
+                          }));
+            },
+        }
+    }
+
+    fn extend_from(&mut self, certs: &Certs) {
+        for cert in &certs.certs {
+            self.insert(cert.clone(), certs.source_name());
+        }
+    }
+}
+
 struct VHelper {
     verbose_out: Box<dyn io::Write>,
     verifications: Vec<Verification>,
@@ -1707,7 +2072,7 @@ struct VHelper {
     total: usize,
     threshold: usize,
 
-    keyring: Vec<Cert>,
+    keyring: CertBag,
 }
 
 impl VHelper {
@@ -1715,9 +2080,10 @@ impl VHelper {
            threshold: usize,
            not_before: Option<SystemTime>,
            not_after: Option<SystemTime>,
-           keyring: Vec<Cert>)
+           keyring: CertBag)
            -> Self
     {
+        assert!(threshold <= 1);
         VHelper {
             verbose_out,
             verifications: Default::default(),
@@ -1734,7 +2100,9 @@ impl VHelper {
 impl VerificationHelper for VHelper {
     fn get_certs(&mut self, _: &[openpgp::KeyHandle])
                  -> openpgp::Result<Vec<Cert>> {
-        Ok(std::mem::replace(&mut self.keyring, Default::default()))
+        Ok(self.keyring.certs.values()
+           .map(|(cert, _)| cert.clone())
+           .collect())
     }
 
     fn check(&mut self, structure: MessageStructure) -> openpgp::Result<()> {
@@ -1777,8 +2145,7 @@ impl VerificationHelper for VHelper {
                                         continue;
                                     }
                                 }
-
-                                self.verifications.push(Verification::new(
+                                let mut v = Verification::new(
                                     t,
                                     ka.fingerprint(),
                                     ka.cert().fingerprint(),
@@ -1787,7 +2154,16 @@ impl VerificationHelper for VHelper {
                                             SignatureMode::Text,
                                         _ => SignatureMode::Binary,
                                     },
-                                    None)?);
+                                    None)?;
+
+                                for n in self.keyring.certs.get(&ka.cert().fingerprint())
+                                    .map(|(_, source_names)| source_names)
+                                    .unwrap_or(&vec![])
+                                {
+                                    v.add_signer(n);
+                                }
+
+                                self.verifications.push(v);
                             },
                             Err(MalformedSignature { error, .. }) => {
                                 writeln!(self.verbose_out,
@@ -1824,12 +2200,6 @@ impl VerificationHelper for VHelper {
                 MessageLayer::Encryption { .. } => (),
             }
         }
-
-        // Dedup the keys so that it is not possible to exceed the
-        // threshold by duplicating signatures or by using the same
-        // key.
-        self.verifications.sort();
-        self.verifications.dedup();
 
         self.good = self.verifications.len();
         if self.good >= self.threshold {

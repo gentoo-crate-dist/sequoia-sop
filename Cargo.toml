@@ -13,18 +13,21 @@ keywords = ["cryptography", "openpgp", "pgp", "sop", "stateless-openpgp"]
 categories = ["cryptography", "command-line-utilities"]
 license = "GPL-2.0-or-later"
 edition = "2021"
+publish = false
 
 [badges]
 gitlab = { repository = "sequoia-pgp/sequoia-sop" }
 maintenance = { status = "actively-developed" }
 
 [dependencies]
-sop = "0.7.2"
+sop = "0.8"
 sequoia-openpgp = { version = "1.20", default-features = false }
+sequoia-wot = { version = "0.13", default-features = false }
 anyhow = "1.0.18"
 
 [build-dependencies]
-sop = "0.7.2"
+sop = "0.8"
+sequoia-openpgp = { version = "1.20", default-features = false }
 
 [lib]
 

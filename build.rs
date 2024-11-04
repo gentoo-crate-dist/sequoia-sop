@@ -5,13 +5,27 @@ use std::{
     path::PathBuf,
 };
 
+#[path = "src/version.rs"]
+mod version;
+
 fn main() {
+    #[cfg(any(feature = "cli", feature = "cliv"))]
+    let v = version::Version::default();
+
    #[cfg(feature = "cli")]
     sop::cli::write_shell_completions(
         "sqop", asset_out_dir("shell-completions").unwrap()).unwrap();
+    #[cfg(feature = "cli")]
+    sop::cli::write_man_pages(
+        sop::cli::Variant::Full, &v, "Sequoia PGP",
+        asset_out_dir("man-pages").unwrap()).unwrap();
    #[cfg(feature = "cliv")]
     sop::cli::write_shell_completions(
         "sqopv", asset_out_dir("shell-completions").unwrap()).unwrap();
+    #[cfg(feature = "cliv")]
+    sop::cli::write_man_pages(
+        sop::cli::Variant::Verification, &v, "Sequoia PGP",
+        asset_out_dir("man-pages").unwrap()).unwrap();
 }
 
 /// Variable name to control the asset out directory with.
