@@ -34,17 +34,8 @@ trixie:
 all_commits:
   # Test each commit up to main, to facilitate bisecting.
   stage: test
-  image: rust:1-slim-buster
+  image: jampot.sequoia-pgp.org/sequoia-pgp/build-docker-image/trixie:latest
   needs: ["trixie"]
-
-  before_script:
-    - apt update -y -qq
-    - apt install --no-install-recommends -y -qq -o=Dpkg::Use-Pty=0 clang libclang-dev llvm pkg-config nettle-dev git
-    - if [ -d $CARGO_TARGET_DIR ]; then find $CARGO_TARGET_DIR | wc --lines; du -sh $CARGO_TARGET_DIR; fi
-    - if [ -d $CARGO_HOME ]; then find $CARGO_HOME | wc --lines; du -sh $CARGO_HOME; fi
-    - rustc --version
-    - cargo --version
-    - clang --version
 
   script:
     # Use dummy identity to make git rebase happy.
