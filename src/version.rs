@@ -11,7 +11,7 @@ impl sop::ops::Version<'_> for Version {
 	#[cfg(feature = "cliv")]
 	let name = "sqopv";
 
-	#[cfg(feature = "cli")]
+	#[cfg(not(feature = "cliv"))]
 	let name = "sqop";
 
         Ok(sop::ops::VersionInfo {
