@@ -2,6 +2,15 @@
 #+TITLE: sequoia-sop NEWS – history of user-visible changes
 #+STARTUP: content hidestars
 
+* Changes in 0.36.1
+** Notable changes
+   - `sqop` now can be used as a multi-call binary.  If it is invoked
+     with argv[0] containing the string "sqopv", it will restrict
+     itself to the verification subset of SOP implemented by `sqopv`.
+
+** Notable fixes
+   - Man page and shell completions have been improved.
+
 * Changes in 0.36.0
 ** Notable changes
    - Started NEWS file.

@@ -1,7 +1,7 @@
 [package]
 name = "sequoia-sop"
 description = "An implementation of the Stateless OpenPGP Interface using Sequoia"
-version = "0.36.0"
+version = "0.36.1"
 authors = [
     "Justus Winter <justus@sequoia-pgp.org>",
 ]
