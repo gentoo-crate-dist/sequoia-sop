@@ -9,11 +9,5 @@
 use sequoia_sop::SQOP;
 
 fn main() {
-    #[cfg(feature = "cliv")]
-    let variant = sop::cli::Variant::Verification;
-
-    #[cfg(feature = "cli")]
-    let variant = sop::cli::Variant::Full;
-
-    sop::cli::main(&mut SQOP::default(), variant);
+    sop::cli::main(&mut SQOP::default(), sop::cli::Variant::Verification);
 }

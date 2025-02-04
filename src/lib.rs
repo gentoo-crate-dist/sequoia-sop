@@ -309,7 +309,7 @@ impl<'s> sop::SOP<'s> for SQOP<'s> {
         self.debug = enable;
     }
     fn version(&self) -> Result<Box<dyn sop::ops::Version>> {
-        Ok(Box::new(version::Version {}))
+        Ok(Box::new(version::Version::default()))
     }
     fn sopv_version(&'s self) -> Result<&'static str> {
         Ok("1.0")

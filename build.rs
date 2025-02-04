@@ -5,27 +5,32 @@ use std::{
     path::PathBuf,
 };
 
+#[cfg(any(feature = "cli", feature = "cliv"))]
+use sop::cli::Variant;
+
 #[path = "src/version.rs"]
 mod version;
 
 fn main() {
-    #[cfg(any(feature = "cli", feature = "cliv"))]
-    let v = version::Version::default();
-
-   #[cfg(feature = "cli")]
-    sop::cli::write_shell_completions(
-        "sqop", asset_out_dir("shell-completions").unwrap()).unwrap();
     #[cfg(feature = "cli")]
-    sop::cli::write_man_pages(
-        sop::cli::Variant::Full, &v, "Sequoia PGP",
-        asset_out_dir("man-pages").unwrap()).unwrap();
-   #[cfg(feature = "cliv")]
-    sop::cli::write_shell_completions(
-        "sqopv", asset_out_dir("shell-completions").unwrap()).unwrap();
+    cli("sqop", Variant::Full).unwrap();
+
     #[cfg(feature = "cliv")]
+    cli("sqopv", Variant::Verification).unwrap();
+}
+
+/// Writes shell completions and man pages.
+#[cfg(any(feature = "cli", feature = "cliv"))]
+fn cli(name: &'static str, variant: Variant) -> Result<(), Box<dyn Error>> {
+    let version = version::Version::with_name(name);
+
+    sop::cli::write_shell_completions2(
+        variant, name, asset_out_dir("shell-completions")?)?;
     sop::cli::write_man_pages(
-        sop::cli::Variant::Verification, &v, "Sequoia PGP",
-        asset_out_dir("man-pages").unwrap()).unwrap();
+        variant, &version, "Sequoia PGP",
+        asset_out_dir("man-pages")?)?;
+
+    Ok(())
 }
 
 /// Variable name to control the asset out directory with.
