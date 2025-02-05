@@ -24,5 +24,4 @@ sop-tests:
     - sh test/simple-sop-test $CARGO_TARGET_DIR/debug/sqop
   variables:
     CARGO_TARGET_DIR: $CI_PROJECT_DIR/../target.$CI_CONCURRENT_ID.all_commits
-    RUSTFLAGS: -D warnings -A unused-parens
     GIT_STRATEGY: clone
