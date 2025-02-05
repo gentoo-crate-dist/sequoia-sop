@@ -1027,27 +1027,19 @@ impl Sign<'_> {
             self.hash_algos.retain(|a| p.contains(a));
         }
 
-        let mut one = false;
-        for _key in vcert.keys()
+        if vcert.keys()
             .supported()
             .secret()
             .alive()
             .revoked(false)
             .for_signing()
-            .map(|ka| ka.key())
+            .next().is_none()
         {
-            one = true;
-            // Exactly one signature per supplied key.
-            break;
+            return Err(Error::KeyCannotSign);
         }
 
         self.signers.push(cert.clone());
-
-        if one {
-            Ok(())
-        } else {
-            Err(Error::KeyCannotSign)
-        }
+        Ok(())
     }
 
     /// Returns the set of signers.
