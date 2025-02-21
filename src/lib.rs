@@ -37,6 +37,7 @@ use openpgp::{
     armor,
     cert::prelude::*,
     parse::{
+        Cookie,
         Parse,
         PacketParser,
         PacketParserResult,
@@ -50,14 +51,13 @@ use openpgp::{
     },
     serialize::{
         Serialize,
-        stream::*,
+        stream::{*, padding::Padder},
     },
     types::*,
 };
 
 use openpgp::{
     Cert,
-    Fingerprint,
     KeyID,
 };
 use openpgp::crypto::{self, SessionKey};
@@ -405,22 +405,29 @@ struct GenerateKey<'s> {
 }
 
 impl<'s> GenerateKey<'s> {
+    const PROFILE_RFC9580: &'static str = "rfc9580";
     const PROFILE_EDDSA: &'static str = "draft-koch-eddsa-for-openpgp-00";
     const PROFILE_RFC4880: &'static str = "rfc4880";
     const PROFILES: &'static [(&'static str, &'static str)] = &[
+        (Self::PROFILE_RFC9580, "use Ed25519/X25519"),
         (Self::PROFILE_EDDSA, "use EdDSA & ECDH over Cv25519"),
         (Self::PROFILE_RFC4880, "use RSA with 3072 bit keys"),
     ];
 
     fn normalize_profile(profile: &str) -> Result<&'static str> {
         match profile {
+            Self::PROFILE_RFC9580 => Ok(Self::PROFILE_RFC9580),
             Self::PROFILE_EDDSA => Ok(Self::PROFILE_EDDSA),
             Self::PROFILE_RFC4880 => Ok(Self::PROFILE_RFC4880),
 
             // The symbolic aliases.
-            "default" => Ok(Self::PROFILE_EDDSA),
-            "security" => Ok(Self::PROFILE_EDDSA),
-            "performance" => Ok(Self::PROFILE_EDDSA),
+            "default" => Ok(match openpgp::Profile::default() {
+                openpgp::Profile::RFC4880 => Self::PROFILE_RFC4880,
+                openpgp::Profile::RFC9580 => Self::PROFILE_RFC9580,
+                _ => Self::PROFILE_RFC9580,
+            }),
+            "security" => Ok(Self::PROFILE_RFC9580),
+            "performance" => Ok(Self::PROFILE_RFC9580),
             "compatibility" => Ok(Self::PROFILE_RFC4880),
 
             _ => Err(Error::UnsupportedProfile),
@@ -430,7 +437,7 @@ impl<'s> GenerateKey<'s> {
     fn new(sqop: &'s SQOP) -> Result<Box<dyn sop::ops::GenerateKey<'s, SQOP<'s>, Keys<'s>> + 's>> {
         Ok(Box::new(GenerateKey {
             sqop,
-            profile: Self::PROFILE_EDDSA,
+            profile: Self::normalize_profile("default")?,
             signing_only: false,
             with_key_password: Default::default(),
             userids: Default::default(),
@@ -478,7 +485,15 @@ impl<'s> sop::ops::GenerateKey<'s, SQOP<'s>, Keys<'s>> for GenerateKey<'s> {
                 None);
         }
 
+        builder = builder.set_profile(match self.profile {
+            Self::PROFILE_RFC9580 => openpgp::Profile::RFC9580,
+            Self::PROFILE_EDDSA => openpgp::Profile::RFC4880,
+            Self::PROFILE_RFC4880 => openpgp::Profile::RFC4880,
+            _ => return Err(Error::UnsupportedProfile),
+        }).map_err(sop_error)?;
+
         builder = builder.set_cipher_suite(match self.profile {
+            Self::PROFILE_RFC9580 => CipherSuite::Cv25519,
             Self::PROFILE_EDDSA => CipherSuite::Cv25519,
             Self::PROFILE_RFC4880 => CipherSuite::RSA3k,
             _ => return Err(Error::UnsupportedProfile),
@@ -547,7 +562,7 @@ impl<'s> sop::ops::ChangeKeyPassword<'s, SQOP<'s>, Keys<'s>> for ChangeKeyPasswo
 
             // Then the encrypted ones, decrypting them on the way.
             for locked_key in key.keys().secret()
-                .filter(|ka| ka.secret().is_encrypted())
+                .filter(|ka| ka.key().secret().is_encrypted())
                 .map(|ka| ka.key())
             {
                 let mut unlocked = false;
@@ -574,7 +589,7 @@ impl<'s> sop::ops::ChangeKeyPassword<'s, SQOP<'s>, Keys<'s>> for ChangeKeyPasswo
 
             // And update the key packets in the cert.
             let (key, _changed) =
-                key.insert_packets2(
+                key.insert_packets(
                     key_packets.into_iter().map(|k| -> openpgp::Packet {
                         if k.fingerprint() == fp {
                             k.role_into_primary().into()
@@ -650,7 +665,7 @@ impl<'s> sop::ops::RevokeKey<'s, SQOP<'s>, Certs<'s>, Keys<'s>> for RevokeKey<'s
             let revocation = key.revoke(&mut signer,
                                         ReasonForRevocation::Unspecified,
                                         b"unspecified").map_err(sop_error)?;
-            results.push(key.clone().insert_packets2(
+            results.push(key.clone().insert_packets(
                 std::iter::once(openpgp::Packet::from(revocation)))
                          .map(|(cert, _changed)| cert)
                          .map_err(sop_error)?
@@ -806,21 +821,20 @@ impl<'s> sop::ops::CertifyUserID<'s, SQOP<'s>, Certs<'s>, Keys<'s>> for CertifyU
                 .map_err(|_| Error::KeyCannotSign)?;
 
             let mut one = false;
-            for mut key in vcert.keys()
+            for ka in vcert.keys()
                 .supported()
                 .secret()
                 .alive()
                 .revoked(false)
                 .for_certification()
-                .map(|ka| ka.key().clone())
             {
-                let algo = key.pk_algo();
+                let mut key = ka.key().clone();
                 if key.secret().is_encrypted() {
                     for p in self.with_key_password.iter()
                         .flat_map(|p| p.variants())
                     {
-                        if key.secret_mut().decrypt_in_place(algo, &p.into())
-                            .is_ok()
+                        if key.secret_mut()
+                            .decrypt_in_place(ka.key(), &p.into()).is_ok()
                         {
                             break;
                         }
@@ -845,7 +859,7 @@ impl<'s> sop::ops::CertifyUserID<'s, SQOP<'s>, Certs<'s>, Keys<'s>> for CertifyU
 
             for new_userid in &self.userids {
                 if ! self.no_require_self_sig
-                    && ! cert.userids().any(|u| u.value() == new_userid.as_bytes())
+                    && ! cert.userids().any(|u| u.userid().value() == new_userid.as_bytes())
                 {
                     // XXX: https://gitlab.com/dkg/openpgp-stateless-cli/-/issues/119
                     return Err(Error::UnspecifiedFailure);
@@ -863,7 +877,7 @@ impl<'s> sop::ops::CertifyUserID<'s, SQOP<'s>, Certs<'s>, Keys<'s>> for CertifyU
             }
 
             outputs.push(cert.clone().insert_packets(acc)
-                         .map_err(sop_error)?);
+                         .map_err(sop_error)?.0);
         }
 
         Ok(Certs {
@@ -933,7 +947,7 @@ impl<'s> ValidateUserID<'s> {
 
                 let mut one = false;
                 for uid in cert.userids()
-                    .filter(|u| u.userid().email2().ok().flatten()
+                    .filter(|u| u.userid().email().ok().flatten()
                             .map(|email| email == userid)
                             .unwrap_or(false))
                 {
@@ -1060,20 +1074,20 @@ impl Sign<'_> {
                 .map_err(|_| Error::KeyCannotSign)?;
 
             let mut one = false;
-            for mut key in vcert.keys()
+            for skb in vcert.keys()
                 .supported()
                 .secret()
                 .alive()
                 .revoked(false)
                 .for_signing()
-                .map(|ka| ka.key().clone())
             {
-                let algo = key.pk_algo();
+                let mut key = skb.key().clone();
+
                 if key.secret().is_encrypted() {
                     for p in self.with_key_password.iter()
                         .flat_map(|p| p.variants())
                     {
-                        if key.secret_mut().decrypt_in_place(algo, &p.into())
+                        if key.secret_mut().decrypt_in_place(skb.key(), &p.into())
                             .is_ok()
                         {
                             break;
@@ -1130,12 +1144,13 @@ impl<'s> sop::ops::Sign<'s, SQOP<'s>, Keys<'s>, Sigs<'s>> for Sign<'s> {
             message,
             signers.pop().expect("at least one"),
             signature::SignatureBuilder::new(into_sig_type(self.mode)))
+            .map_err(sop_error)?
             .hash_algo(
                 self.hash_algos.get(0).cloned().unwrap_or_default()
             ).map_err(sop_error)?
             .detached();
         for s in signers {
-            signer = signer.add_signer(s);
+            signer = signer.add_signer(s).map_err(sop_error)?;
         }
         let mut message = signer.build().map_err(sop_error)?;
         io::copy(data, &mut message)?;
@@ -1242,48 +1257,69 @@ struct Encrypt<'s> {
     profile: &'static str,
     mode: EncryptAs,
     symmetric_algos: Vec<SymmetricAlgorithm>,
-    recipients: Vec<Key<key::PublicParts, key::UnspecifiedRole>>,
+    aead_algos: Vec<(SymmetricAlgorithm, AEADAlgorithm)>,
+    recipients: Vec<(Features, Key<key::PublicParts, key::UnspecifiedRole>)>,
     passwords: Vec<Password>,
 }
 
 impl<'s> Encrypt<'s> {
+    const PROFILE_RFC9580: &'static str = "rfc9580";
     const PROFILE_RFC4880: &'static str = "rfc4880";
     const PROFILES: &'static [(&'static str, &'static str)] = &[
+        (Self::PROFILE_RFC9580, "use SEIPDv2"),
         (Self::PROFILE_RFC4880, "use SEIPDv1"),
     ];
 
     fn normalize_profile(profile: &str) -> Result<&'static str> {
         match profile {
+            Self::PROFILE_RFC9580 => Ok(Self::PROFILE_RFC9580),
             Self::PROFILE_RFC4880 => Ok(Self::PROFILE_RFC4880),
 
             // The symbolic aliases.
-            "default" => Ok(Self::PROFILE_RFC4880),
-            "security" => Ok(Self::PROFILE_RFC4880),
-            "performance" => Ok(Self::PROFILE_RFC4880),
+            "default" => Ok(match openpgp::Profile::default() {
+                openpgp::Profile::RFC4880 => Self::PROFILE_RFC4880,
+                openpgp::Profile::RFC9580 => Self::PROFILE_RFC9580,
+                _ => Self::PROFILE_RFC9580,
+            }),
+            "security" => Ok(Self::PROFILE_RFC9580),
+            "performance" => Ok(Self::PROFILE_RFC9580),
             "compatibility" => Ok(Self::PROFILE_RFC4880),
 
             _ => Err(Error::UnsupportedProfile),
         }
     }
 
+    const SYMMETRIC_ALGOS: &'static [SymmetricAlgorithm] = &[
+        SymmetricAlgorithm::AES256,
+        SymmetricAlgorithm::AES192,
+        SymmetricAlgorithm::AES128,
+        SymmetricAlgorithm::Camellia256,
+        SymmetricAlgorithm::Camellia192,
+        SymmetricAlgorithm::Camellia128,
+        SymmetricAlgorithm::Blowfish,
+        SymmetricAlgorithm::Twofish,
+    ];
+
+    const AEAD_ALGOS: &'static [AEADAlgorithm] = &[
+        AEADAlgorithm::OCB,
+        AEADAlgorithm::GCM,
+        AEADAlgorithm::EAX,
+    ];
+
     fn new(sqop: &'s SQOP) -> Result<Box<dyn sop::ops::Encrypt<'s, SQOP<'s>, Certs<'s>, Keys<'s>> + 's>> {
         Ok(Box::new(Encrypt {
             no_armor: false,
             sign: Sign::unboxed(sqop),
-            profile: Self::PROFILE_RFC4880,
+            profile: Self::normalize_profile("default")?,
             mode: Default::default(),
-            symmetric_algos: [
-                SymmetricAlgorithm::AES256,
-                SymmetricAlgorithm::AES192,
-                SymmetricAlgorithm::AES128,
-                SymmetricAlgorithm::Camellia256,
-                SymmetricAlgorithm::Camellia192,
-                SymmetricAlgorithm::Camellia128,
-                SymmetricAlgorithm::Blowfish,
-                SymmetricAlgorithm::Twofish,
-            ].iter().copied().filter(|&a| {
+            symmetric_algos: Self::SYMMETRIC_ALGOS.iter().copied().filter(|&a| {
                 a.is_supported() && sqop.policy.symmetric_algorithm(a).is_ok()
             }).collect(),
+            aead_algos: Self::SYMMETRIC_ALGOS.iter().copied().filter(|&a| {
+                a.is_supported() && sqop.policy.symmetric_algorithm(a).is_ok()
+            }).flat_map(|s| Self::AEAD_ALGOS.iter().copied().filter(|&a| {
+                a.is_supported() && sqop.policy.aead_algorithm(a).is_ok()
+            }).map(move |a| (s, a))).collect(),
             recipients: Default::default(),
             passwords: Default::default(),
         }))
@@ -1302,17 +1338,28 @@ impl<'s> Encrypt<'s> {
         if let Some(p) = vcert.preferred_symmetric_algorithms() {
             self.symmetric_algos.retain(|a| p.contains(a));
         }
+        if let Some(p) = vcert.preferred_aead_ciphersuites() {
+            self.aead_algos.retain(|a| p.contains(a));
+        }
+
+        // Gracefully fall back to SEIPDv1.
+        if ! vcert.features().map(|f| f.supports_seipdv2())
+            .unwrap_or_else(|| vcert.primary_key().key().version() == 6)
+        {
+            self.profile = Self::PROFILE_RFC4880;
+        }
 
         let mut one = false;
-        for key in vcert.keys()
+        for vka in vcert.keys()
             .supported()
             .alive()
             .revoked(false)
             .for_storage_encryption()
             .for_transport_encryption()
-            .map(|ka| ka.key())
         {
-            self.recipients.push(key.clone());
+            self.recipients.push(
+                (vka.valid_cert().features().unwrap_or_else(Features::empty),
+                 vka.key().clone()));
             one = true;
         }
 
@@ -1409,20 +1456,46 @@ impl<'s> sop::ops::Ready<Option<sop::SessionKey>> for EncryptReady<'s> {
         // XXX: Honor self.profile once we have more than one.
 
         // Encrypt the message.
-        let cipher =
-            self.encrypt.symmetric_algos.get(0).cloned().unwrap_or_default();
+        let (cipher, aead_algo) = match self.encrypt.profile {
+            Encrypt::PROFILE_RFC9580 => {
+                let (c, a) = self.encrypt.aead_algos.get(0).cloned()
+                    .unwrap_or(
+                        // Fall back to the MTI algorithms.
+                        (SymmetricAlgorithm::AES128, AEADAlgorithm::OCB));
+                (c, Some(a))
+            },
+            Encrypt::PROFILE_RFC4880 => {
+                (self.encrypt.symmetric_algos.get(0).cloned()
+                 .unwrap_or_default(),
+                 None)
+            },
+            _ => unreachable!("checked in Encrypt::profile"),
+        };
+
         let session_key =
-            SessionKey::new(cipher.key_size().map_err(sop_error)?);
+            SessionKey::new(cipher.key_size().map_err(sop_error)?)
+            .map_err(sop_error)?;
         let sop_session_key = sop::SessionKey::new(cipher, &session_key)?;
-        let mut message =
-            Encryptor2::with_session_key(message, cipher, session_key)
+        let mut encryptor =
+            Encryptor::with_session_key(message, cipher, session_key)
             .map_err(sop_error)?
-            .add_recipients(self.encrypt.recipients.iter())
+            .add_recipients(
+                self.encrypt.recipients.iter()
+                    .map(|(f, k)| Recipient::new(f.clone(), k.key_handle(), k)))
             .add_passwords(
                 self.encrypt.passwords.into_iter()
                     .map(|p| crypto::Password::from(p.normalized())))
-            .symmetric_algo(cipher)
+                .symmetric_algo(cipher);
+
+        if let Some(a) = aead_algo {
+            encryptor = encryptor.aead_algo(a);
+        }
+
+        let mut message = encryptor
             .build().map_err(sop_error)?;
+
+        // Enable padding if possible.
+        message = Padder::new(message).build().map_err(sop_error)?;
 
         // Maybe sign the message.
         let mut signers = self.encrypt.sign.make_signers()?;
@@ -1430,11 +1503,12 @@ impl<'s> sop::ops::Ready<Option<sop::SessionKey>> for EncryptReady<'s> {
             let mut signer = Signer::with_template(
                 message, first,
                 signature::SignatureBuilder::new(into_sig_type(self.encrypt.sign.mode)))
+                .map_err(sop_error)?
                 .hash_algo(
                     self.encrypt.sign.hash_algos.get(0).cloned().unwrap_or_default())
                 .map_err(sop_error)?;
             for s in signers {
-                signer = signer.add_signer(s);
+                signer = signer.add_signer(s).map_err(sop_error)?;
             }
             message = signer.build().map_err(sop_error)?;
         }
@@ -1579,6 +1653,121 @@ impl<'s> Armor<'s> {
             label: Default::default(),
         }))
     }
+
+    /// Parse the packet stream to guess the label and profile.
+    ///
+    /// We make no effort to verify the packet structure.
+    fn dpi(mut source: Box<dyn BufferedReader<Cookie> + 's>)
+           -> Result<(Box<dyn BufferedReader<Cookie> + 's>,
+                      Option<armor::Kind>,
+                      openpgp::Profile)>
+    {
+        // Our guess at what kind of data we're looking at.
+        let mut kind = None;
+
+        // Our guess for the OpenPGP profile.
+        let mut profile = None;
+
+        // What kind of signatures we saw.
+        let mut saw_sig_v4 = false;
+        let mut saw_sig_v6 = false;
+
+        // What kind of keys we saw.
+        let mut saw_key_v4 = false;
+        let mut saw_key_v6 = false;
+
+        source = Dup::with_cookie(source, Default::default()).into_boxed();
+        {
+            let mut ppr = PacketParser::from_buffered_reader(&mut source)
+                .map_err(sop_error)?;
+
+            while let PacketParserResult::Some(pp) = ppr {
+                if kind.is_none() {
+                    // Autodetect using the first packet.
+                    kind = Some(match &pp.packet {
+                        Packet::Signature(_) =>
+                            armor::Kind::Signature,
+                        Packet::SecretKey(_) =>
+                            armor::Kind::SecretKey,
+                        Packet::PublicKey(_) =>
+                            armor::Kind::PublicKey,
+                        Packet::PKESK(_) | Packet::SKESK(_)
+                            | Packet::OnePassSig(_) =>
+                            armor::Kind::Message,
+                        _ => return Err(Error::BadData),
+                    });
+                }
+
+                // Inspect the packet versions, and either call the
+                // profile now, or track which packet versions we
+                // encounter.  We do not recurse into containers.
+                match &pp.packet {
+                    Packet::SEIP(s) => {
+                        match s.version() {
+                            1 =>
+                                profile = Some(openpgp::Profile::RFC4880),
+
+                            2 | _ =>
+                                profile = Some(openpgp::Profile::RFC9580),
+                        }
+
+                        // We've seen enough.
+                        break;
+                    },
+
+                    Packet::Literal(_) => {
+                        // Either we've seen enough, or we cannot possibly
+                        // learn anything more from a well formed message.
+                        break;
+                    },
+
+                    Packet::Signature(s) => {
+                        saw_sig_v4 |= s.version() == 3;
+                        saw_sig_v4 |= s.version() == 4;
+                        saw_sig_v6 |= s.version() == 6;
+                    },
+                    Packet::OnePassSig(s) => {
+                        saw_sig_v4 |= s.version() == 3;
+                        saw_sig_v6 |= s.version() == 6;
+                    },
+
+                    Packet::SecretKey(k) => {
+                        saw_key_v4 |= k.version() == 4;
+                        saw_key_v6 |= k.version() == 6;
+                    },
+                    Packet::PublicKey(k) => {
+                        saw_key_v4 |= k.version() == 4;
+                        saw_key_v6 |= k.version() == 6;
+                    },
+
+                    _ => (),
+                }
+
+                ppr = pp.next().map_err(sop_error)?.1;
+            }
+        }
+
+        // Pop off the Dup reader.
+        //drop(ppr);
+        source = source.into_inner()
+            .expect("the Dup to be popped off");
+
+        // Guess the profile, if not yet called.
+        let profile = match profile {
+            Some(p) => p,
+            None => match (saw_sig_v4, saw_sig_v6, saw_key_v4, saw_key_v6) {
+                (false, false, false, false) => openpgp::Profile::default(),
+                (false,  true, false, false) => openpgp::Profile::RFC9580,
+                ( true, false, false, false) => openpgp::Profile::RFC4880,
+                ( true,  true, false, false) => openpgp::Profile::RFC4880,
+                (    _,     _, false,  true) => openpgp::Profile::RFC9580,
+                (    _,     _,  true, false) => openpgp::Profile::RFC4880,
+                (    _,     _,  true,  true) => openpgp::Profile::RFC4880,
+            },
+        };
+
+        Ok((source, kind, profile))
+    }
 }
 
 impl<'s> sop::ops::Armor<'s> for Armor<'s> {
@@ -1610,7 +1799,9 @@ impl<'s> sop::ops::Ready for ArmorReady<'s> {
                 -> Result<()> {
         let _ = self.armor.sqop;
 
-        let mut source = Generic::new(self.data, None).into_boxed();
+        let mut source =
+            Generic::with_cookie(self.data, None, Cookie::default())
+            .into_boxed();
 
         // Peek at the data to see if it is already armored.
         let armored =
@@ -1619,62 +1810,28 @@ impl<'s> sop::ops::Ready for ArmorReady<'s> {
         // If so, dearmor, and extract the headers.
         let mut headers: Vec<(String, String)> = vec![];
         if armored {
-            let mut r = armor::Reader::from_reader(
-                source, armor::ReaderMode::Tolerant(None));
+            let mut r = armor::Reader::from_buffered_reader(
+                source, armor::ReaderMode::Tolerant(None))?;
             headers = r.headers()?.iter().cloned().collect();
-            source = Box::new(Adapter::new(r));
+            source = r.into_boxed();
         }
 
-        fn make<'s>(sink: &'s mut (dyn io::Write + Send + Sync),
-                    kind: armor::Kind,
-                    headers: Vec<(String, String)>)
-                    -> Result<Message>
-        {
-            let m = Message::new(sink);
-            let mut a = Armorer::new(m).kind(kind);
-            for (k, v) in headers {
-                a = a.add_header(k, v);
-            }
-            a.build().map_err(sop_error)
-        }
+        // Parse the packet stream to guess the label and profile.
+        let (source_, guess, profile) = Armor::dpi(source)?;
+        source = source_;
 
-        // We make no effort to verify the packet structure.
-        let mut sink = match self.armor.label {
-            ArmorLabel::Auto => {
-                source = Dup::new(source).into_boxed();
-                let ppr = PacketParser::from_reader(&mut source)
-                    .map_err(sop_error)?;
-                let kind =
-                    if let PacketParserResult::Some(pp) = &ppr {
-                        // Autodetect using the first packet.
-                        match &pp.packet {
-                        Packet::Signature(_) =>
-                            armor::Kind::Signature,
-                        Packet::SecretKey(_) =>
-                            armor::Kind::SecretKey,
-                        Packet::PublicKey(_) =>
-                            armor::Kind::PublicKey,
-                        Packet::PKESK(_) | Packet::SKESK(_)
-                            | Packet::OnePassSig(_) =>
-                            armor::Kind::Message,
-                            _ => return Err(Error::BadData),
-                        }
-                    } else {
-                        return Err(Error::BadData);
-                    };
-                drop(ppr);
-                source = source.into_inner()
-                    .expect("the Dup to be popped off");
-                make(sink, kind, headers)?
-            },
-            ArmorLabel::Sig => make(sink, armor::Kind::Signature, headers)?,
-            ArmorLabel::Key => make(sink, armor::Kind::SecretKey, headers)?,
-            ArmorLabel::Cert => make(sink, armor::Kind::PublicKey, headers)?,
-            ArmorLabel::Message => make(sink, armor::Kind::Message, headers)?,
+        let kind = match self.armor.label {
+            ArmorLabel::Auto => guess.ok_or(Error::BadData)?,
+            ArmorLabel::Sig => armor::Kind::Signature,
+            ArmorLabel::Key => armor::Kind::SecretKey,
+            ArmorLabel::Cert => armor::Kind::PublicKey,
+            ArmorLabel::Message => armor::Kind::Message,
         };
 
+        let mut sink = armor::Writer::with_headers(sink, kind, headers)?;
+        sink.set_profile(profile)?;
         std::io::copy(&mut source, &mut sink)?;
-        sink.finalize().map_err(sop_error)?;
+        sink.finalize()?;
         Ok(())
     }
 }
@@ -1770,7 +1927,7 @@ impl<'s> sop::ops::Ready<Sigs<'s>> for InlineDetachReady<'s, '_> {
                 -> Result<Sigs<'s>> {
         let _ = self.inline_detach.sqop;
 
-        let np = NullPolicy::new();
+        let np = unsafe { NullPolicy::new() };
 
         /// A nop-verification-helper to extract message and
         /// signatures.
@@ -2007,12 +2164,13 @@ impl<'s> sop::ops::Ready for InlineSignReady<'s> {
             signers.pop().expect("at least one"),
             signature::SignatureBuilder::new(
                 into_isig_type(self.inline_sign.mode)))
+            .map_err(sop_error)?
             .hash_algo(
                 self.inline_sign.sign.hash_algos.get(0).cloned()
                     .unwrap_or_default()).map_err(sop_error)?;
 
         for s in signers {
-            signer = signer.add_signer(s);
+            signer = signer.add_signer(s).map_err(sop_error)?;
         }
 
         if matches!(self.inline_sign.mode, InlineSignAs::ClearSigned) {
@@ -2156,7 +2314,7 @@ impl VerificationHelper for VHelper {
                                 }
                                 let mut v = Verification::new(
                                     t,
-                                    ka.fingerprint(),
+                                    ka.key().fingerprint(),
                                     ka.cert().fingerprint(),
                                     match sig.typ() {
                                         SignatureType::Text =>
@@ -2203,6 +2361,15 @@ impl VerificationHelper for VHelper {
                                          "Verifying signature:")?;
                                 print_error_chain(&mut self.verbose_out, &error)?;
                             },
+                            Err(UnknownSignature { sig, .. }) => {
+                                writeln!(self.verbose_out,
+                                         "Verifying signature:")?;
+                                print_error_chain(&mut self.verbose_out, sig.error())?;
+                            },
+                            Err(error) => {
+                                writeln!(self.verbose_out,
+                                         "Verifying signature: {}", error)?;
+                            },
                         }
                     }
                 MessageLayer::Compression { .. } => (),
@@ -2226,7 +2393,7 @@ struct Helper {
     secret_keys:
         HashMap<KeyID, Key<key::SecretParts, key::UnspecifiedRole>>,
     with_key_password: Vec<Password>,
-    identities: HashMap<KeyID, Fingerprint>,
+    identities: HashMap<KeyID, Cert>,
     session_key: Option<sop::SessionKey>,
 }
 
@@ -2239,7 +2406,7 @@ impl Helper {
            secrets: Vec<Cert>) -> Self
     {
         let mut secret_keys = HashMap::new();
-        let mut identities: HashMap<KeyID, Fingerprint> = HashMap::new();
+        let mut identities: HashMap<KeyID, Cert> = HashMap::new();
         for tsk in secrets {
             for ka in tsk.keys().secret()
                 .with_policy(policy, None)
@@ -2248,7 +2415,7 @@ impl Helper {
             {
                 let id: KeyID = ka.key().fingerprint().into();
                 secret_keys.insert(id.clone(), ka.key().clone().into());
-                identities.insert(id.clone(), tsk.fingerprint());
+                identities.insert(id.clone(), tsk.clone().strip_secret_key_material());
             }
         }
 
@@ -2267,22 +2434,22 @@ impl Helper {
 
     /// Tries to decrypt the given PKESK packet with `keypair` and try
     /// to decrypt the packet parser using `decrypt`.
-    fn try_decrypt<D>(&self, pkesk: &PKESK,
-                      algo: Option<SymmetricAlgorithm>,
-                      keypair: &mut dyn crypto::Decryptor,
-                      decrypt: &mut D)
-                      -> Option<(SymmetricAlgorithm,
-                                 SessionKey,
-                                 Option<Fingerprint>)>
-        where D: FnMut(SymmetricAlgorithm, &SessionKey) -> bool
+    fn try_decrypt(&self, pkesk: &PKESK,
+                   algo_hint: Option<SymmetricAlgorithm>,
+                   keypair: &mut dyn crypto::Decryptor,
+                   decrypt: &mut dyn FnMut(Option<SymmetricAlgorithm>, &SessionKey) -> bool)
+                   -> Option<(SymmetricAlgorithm,
+                              SessionKey,
+                              Option<Cert>)>
     {
-        let keyid = keypair.public().fingerprint().into();
-        let (algo, sk) = pkesk.decrypt(keypair, algo)
+        let keyid: KeyID = keypair.public().fingerprint().into();
+        let (algo, sk) = pkesk.decrypt(keypair, algo_hint)
             .and_then(|(algo, sk)| {
                 if decrypt(algo, &sk) { Some((algo, sk)) } else { None }
             })?;
 
-        Some((algo, sk, self.identities.get(&keyid).map(|fp| fp.clone())))
+        Some((algo.or(algo_hint).unwrap(), sk,
+              self.identities.get(&keyid).map(|cert| cert.clone())))
     }
 
     /// Dumps the session key.
@@ -2305,10 +2472,10 @@ impl VerificationHelper for Helper {
 }
 
 impl DecryptionHelper for Helper {
-    fn decrypt<D>(&mut self, pkesks: &[PKESK], skesks: &[SKESK],
-                  algo: Option<SymmetricAlgorithm>,
-                  mut decrypt: D) -> openpgp::Result<Option<Fingerprint>>
-        where D: FnMut(SymmetricAlgorithm, &SessionKey) -> bool
+    fn decrypt(&mut self, pkesks: &[PKESK], skesks: &[SKESK],
+               algo_hint: Option<SymmetricAlgorithm>,
+               decrypt: &mut dyn FnMut(Option<SymmetricAlgorithm>, &SessionKey) -> bool)
+               -> openpgp::Result<Option<Cert>>
     {
         let mut error = Error::CannotDecrypt;
 
@@ -2316,7 +2483,7 @@ impl DecryptionHelper for Helper {
         while let Some(sk) = self.session_keys.pop() {
             let algo = SymmetricAlgorithm::from(sk.algorithm());
             let sk = SessionKey::from(sk.key());
-            if decrypt(algo, &sk) {
+            if decrypt(Some(algo), &sk) {
                 self.dump_session_key(algo, &sk)?;
                 return Ok(None);
             }
@@ -2324,16 +2491,16 @@ impl DecryptionHelper for Helper {
 
         // Second, we try those keys that we can use.
         for pkesk in pkesks {
-            let keyid = pkesk.recipient();
+            let keyid: KeyID = pkesk.recipient().into();
             if let Some(key) = self.secret_keys.get_mut(&keyid) {
-                let pk_algo = key.pk_algo();
+                let key_ref = key.clone();
 
                 // Try to decrypt it using any supplied password.
                 if key.secret().is_encrypted() {
                     for p in self.with_key_password.iter()
                         .flat_map(|p| p.variants())
                     {
-                        if key.secret_mut().decrypt_in_place(pk_algo, &p.into())
+                        if key.secret_mut().decrypt_in_place(&key_ref, &p.into())
                             .is_ok()
                         {
                             break;
@@ -2344,7 +2511,7 @@ impl DecryptionHelper for Helper {
                 if ! key.secret().is_encrypted() {
                     if let Some((algo, sk, fp)) =
                         key.clone().into_keypair().ok().and_then(|mut k| {
-                            self.try_decrypt(pkesk, algo, &mut k, &mut decrypt)
+                            self.try_decrypt(pkesk, algo_hint, &mut k, decrypt)
                         })
                     {
                         self.dump_session_key(algo, &sk)?;
@@ -2361,16 +2528,16 @@ impl DecryptionHelper for Helper {
 
         // Third, we try to decrypt PKESK packets with wildcard
         // recipients.
-        for pkesk in pkesks.iter().filter(|p| p.recipient().is_wildcard()) {
+        for pkesk in pkesks.iter().filter(|p| KeyID::from(p.recipient()).is_wildcard()) {
             for mut key in std::mem::take(&mut self.secret_keys).into_values() {
-                let pk_algo = key.pk_algo();
+                let key_ref = key.clone();
 
                 // Try to decrypt it using any supplied password.
                 if key.secret().is_encrypted() {
                     for p in self.with_key_password.iter()
                         .flat_map(|p| p.variants())
                     {
-                        if key.secret_mut().decrypt_in_place(pk_algo, &p.into())
+                        if key.secret_mut().decrypt_in_place(&key_ref, &p.into())
                             .is_ok()
                         {
                             break;
@@ -2381,7 +2548,7 @@ impl DecryptionHelper for Helper {
                 if ! key.secret().is_encrypted() {
                     if let Some((algo, sk, fp)) =
                         key.clone().into_keypair().ok().and_then(|mut k| {
-                            self.try_decrypt(pkesk, algo, &mut k, &mut decrypt)
+                            self.try_decrypt(pkesk, algo_hint, &mut k, decrypt)
                         })
                     {
                         self.dump_session_key(algo, &sk)?;
@@ -2411,7 +2578,7 @@ impl DecryptionHelper for Helper {
                         }
                     })
                 {
-                    self.dump_session_key(algo, &sk)?;
+                    self.dump_session_key(algo.or(algo_hint).unwrap(), &sk)?;
                     return Ok(None);
                 }
             }
@@ -2535,7 +2702,7 @@ fn sop_error(e: anyhow::Error) -> Error {
             BadSignature(_) => Error::BadData,
             MalformedMessage(_) => Error::BadData,
             MalformedCert(_) => Error::BadData,
-            UnsupportedCert2(_, _) => Error::BadData,
+            UnsupportedCert(_, _) => Error::BadData,
             Expired(_) => Error::BadData,
             NotYetLive(_) => Error::BadData,
             NoBindingSignature(_) => Error::BadData,

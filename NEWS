@@ -2,6 +2,10 @@
 #+TITLE: sequoia-sop NEWS – history of user-visible changes
 #+STARTUP: content hidestars
 
+* Changes in 0.37.0
+** Notable changes
+   - We now support RFC9580.
+
 * Changes in 0.36.1
 ** Notable changes
    - `sqop` now can be used as a multi-call binary.  If it is invoked
