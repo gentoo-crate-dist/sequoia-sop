@@ -1423,7 +1423,6 @@ impl<'s> sop::ops::Ready<Option<sop::SessionKey>> for EncryptReady<'s> {
 
         // Literal wrapping.
         let mut message = LiteralWriter::new(message)
-                .format(into_data_format(self.encrypt.mode))
                 .build().map_err(sop_error)?;
         io::copy(self.plaintext, &mut message)?;
         message.finalize().map_err(sop_error)?;
@@ -2416,13 +2415,6 @@ fn into_isig_type(mode: sop::ops::InlineSignAs) -> SignatureType {
         InlineSignAs::Binary => SignatureType::Binary,
         InlineSignAs::Text => SignatureType::Text,
         InlineSignAs::ClearSigned => SignatureType::Text,
-    }
-}
-
-fn into_data_format(mode: EncryptAs) -> DataFormat {
-    match mode {
-        EncryptAs::Binary => DataFormat::Binary,
-        EncryptAs::Text => DataFormat::Text,
     }
 }
 
