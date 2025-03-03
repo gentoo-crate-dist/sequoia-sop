@@ -412,6 +412,21 @@ impl<'s> GenerateKey<'s> {
         (Self::PROFILE_RFC4880, "use RSA with 3072 bit keys"),
     ];
 
+    fn normalize_profile(profile: &str) -> Result<&'static str> {
+        match profile {
+            Self::PROFILE_EDDSA => Ok(Self::PROFILE_EDDSA),
+            Self::PROFILE_RFC4880 => Ok(Self::PROFILE_RFC4880),
+
+            // The symbolic aliases.
+            "default" => Ok(Self::PROFILE_EDDSA),
+            "security" => Ok(Self::PROFILE_EDDSA),
+            "performance" => Ok(Self::PROFILE_EDDSA),
+            "compatibility" => Ok(Self::PROFILE_RFC4880),
+
+            _ => Err(Error::UnsupportedProfile),
+        }
+    }
+
     fn new(sqop: &'s SQOP) -> Result<Box<dyn sop::ops::GenerateKey<'s, SQOP<'s>, Keys<'s>> + 's>> {
         Ok(Box::new(GenerateKey {
             sqop,
@@ -425,18 +440,12 @@ impl<'s> GenerateKey<'s> {
 
 impl<'s> sop::ops::GenerateKey<'s, SQOP<'s>, Keys<'s>> for GenerateKey<'s> {
     fn list_profiles(&self) -> Vec<(String, String)> {
-        Self::PROFILES.iter()
-            .map(|(p, d)| (p.to_string(), d.to_string()))
-            .collect()
+        list_profiles(Self::PROFILES, &Self::normalize_profile)
     }
 
     fn profile(mut self: Box<Self>, profile: &str)
                -> Result<Box<dyn sop::ops::GenerateKey<'s, SQOP<'s>, Keys<'s>> + 's>> {
-        self.profile = match profile {
-            Self::PROFILE_EDDSA | "default" => Self::PROFILE_EDDSA,
-            Self::PROFILE_RFC4880 => Self::PROFILE_RFC4880,
-            _ => return Err(Error::UnsupportedProfile),
-        };
+        self.profile = Self::normalize_profile(profile)?;
         Ok(self)
     }
 
@@ -1243,6 +1252,20 @@ impl<'s> Encrypt<'s> {
         (Self::PROFILE_RFC4880, "use SEIPDv1"),
     ];
 
+    fn normalize_profile(profile: &str) -> Result<&'static str> {
+        match profile {
+            Self::PROFILE_RFC4880 => Ok(Self::PROFILE_RFC4880),
+
+            // The symbolic aliases.
+            "default" => Ok(Self::PROFILE_RFC4880),
+            "security" => Ok(Self::PROFILE_RFC4880),
+            "performance" => Ok(Self::PROFILE_RFC4880),
+            "compatibility" => Ok(Self::PROFILE_RFC4880),
+
+            _ => Err(Error::UnsupportedProfile),
+        }
+    }
+
     fn new(sqop: &'s SQOP) -> Result<Box<dyn sop::ops::Encrypt<'s, SQOP<'s>, Certs<'s>, Keys<'s>> + 's>> {
         Ok(Box::new(Encrypt {
             no_armor: false,
@@ -1308,17 +1331,12 @@ impl<'s> sop::ops::Encrypt<'s, SQOP<'s>, Certs<'s>, Keys<'s>> for Encrypt<'s> {
     }
 
     fn list_profiles(&self) -> Vec<(String, String)> {
-        Self::PROFILES.iter()
-            .map(|(p, d)| (p.to_string(), d.to_string()))
-            .collect()
+        list_profiles(Self::PROFILES, &Self::normalize_profile)
     }
 
     fn profile(mut self: Box<Self>, profile: &str)
                -> Result<Box<dyn sop::ops::Encrypt<'s, SQOP<'s>, Certs<'s>, Keys<'s>> + 's>> {
-        self.profile = match profile {
-            Self::PROFILE_RFC4880 | "default" => Self::PROFILE_RFC4880,
-            _ => return Err(Error::UnsupportedProfile),
-        };
+        self.profile = Self::normalize_profile(profile)?;
         Ok(self)
     }
 
@@ -2416,6 +2434,50 @@ fn into_isig_type(mode: sop::ops::InlineSignAs) -> SignatureType {
         InlineSignAs::Text => SignatureType::Text,
         InlineSignAs::ClearSigned => SignatureType::Text,
     }
+}
+
+/// Returns the symbolic aliases for profiles.
+fn symbolic_profiles() -> impl Iterator<Item=&'static str> {
+    [
+        "default",
+        "security",
+        "performance",
+        "compatibility",
+    ].into_iter()
+}
+
+/// List profiles and their aliases.
+fn list_profiles(profiles: &[(&str, &str)],
+                 normalize: &dyn Fn(&str) -> Result<&'static str>)
+                 -> Vec<(String, String)> {
+    profiles.iter()
+        .map(|(p, d)| {
+            // Discover aliases.
+            let aliases = symbolic_profiles()
+                .filter_map(|q| {
+                    if normalize(q)
+                        .map(|q| q == *p)
+                        .unwrap_or(false)
+                    {
+                        Some(q)
+                    } else {
+                        None
+                    }
+                })
+                .collect::<Vec<_>>();
+
+            let description = if aliases.is_empty() {
+                d.to_string()
+            } else {
+                format!("{} (alias{}: {})",
+                        d,
+                        if aliases.len() > 1 { "es" } else { "" },
+                        aliases.join(", "))
+            };
+
+            (p.to_string(), description)
+        })
+        .collect()
 }
 
 /// Prints the error and causes, if any.
