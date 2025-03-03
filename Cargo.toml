@@ -21,6 +21,7 @@ maintenance = { status = "actively-developed" }
 [dependencies]
 sop = "0.8.1"
 sequoia-openpgp = { version = "1.20", default-features = false }
+sequoia-policy-config = { version = "0.7", default-features = false, optional = true }
 sequoia-wot = { version = "0.13", default-features = false }
 anyhow = "1.0.18"
 
@@ -40,5 +41,5 @@ required-features = ["cliv"]
 
 [features]
 default = ["sequoia-openpgp/default"]
-cli = ["sop/cli"]
-cliv = ["sop/cliv"]
+cli = ["sop/cli", "dep:sequoia-policy-config"]
+cliv = ["sop/cliv", "dep:sequoia-policy-config"]

@@ -6,9 +6,14 @@
 //!
 //!   [Stateless OpenPGP Command Line Interface]: https://datatracker.ietf.org/doc/draft-dkg-openpgp-stateless-cli/
 
+use sequoia_policy_config::ConfiguredStandardPolicy;
 use sequoia_sop::SQOP;
 
 fn main() {
+    let mut policy = ConfiguredStandardPolicy::default();
+    let _ = policy.parse_default_config();
+    let policy = policy.build();
+
     // Be clever and inspect argv[0].
     let argv0 = std::env::args_os().next();
     let variant = if argv0
@@ -21,5 +26,5 @@ fn main() {
         sop::cli::Variant::Full
     };
 
-    sop::cli::main(&mut SQOP::default(), variant);
+    sop::cli::main(&mut SQOP::with_policy(&policy), variant);
 }
