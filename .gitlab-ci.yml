@@ -20,8 +20,7 @@ sop-tests:
     - git remote add origin https://gitlab.com/dkg/openpgp-stateless-cli
     - git fetch --depth 1 origin d4870845e925b85bbb0250c9fcc8369f2b191078
     - git checkout FETCH_HEAD
-    - bash test/evaluate $CARGO_TARGET_DIR/debug/sqop
-    - sh test/simple-sop-test $CARGO_TARGET_DIR/debug/sqop
+    - bash test/evaluate $CI_PROJECT_DIR/target/debug/sqop
+    - sh test/simple-sop-test $CI_PROJECT_DIR/target/debug/sqop
   variables:
-    CARGO_TARGET_DIR: $CI_PROJECT_DIR/../target.$CI_CONCURRENT_ID.all_commits
     GIT_STRATEGY: clone
