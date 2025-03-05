@@ -1830,7 +1830,7 @@ impl<'s> sop::ops::Ready for ArmorReady<'s> {
 
         let mut sink = armor::Writer::with_headers(sink, kind, headers)?;
         sink.set_profile(profile)?;
-        std::io::copy(&mut source, &mut sink)?;
+        source.copy(&mut sink)?;
         sink.finalize()?;
         Ok(())
     }
@@ -1873,18 +1873,17 @@ impl sop::ops::Ready for DearmorReady<'_> {
 
         // Peek at the data to see if it is really armored.  We make
         // no effort to verify the packet structure.
-        let mut source = Generic::new(self.data, None).into_boxed();
+        let mut source =
+            Generic::with_cookie(self.data, None, Cookie::default())
+            .into_boxed();
         let armored =
             source.data(1)?.get(0).map(|b| b & 0x80 == 0).unwrap_or(false);
 
         if armored {
-            // XXX: Give the buffered reader to the armor::Reader once
-            // that is possible.
-            let mut r = openpgp::armor::Reader::from_reader(source, None);
-            std::io::copy(&mut r, sink)?;
+            let mut r = armor::Reader::from_buffered_reader(source, None)?;
+            r.copy(sink)?;
         } else {
-            // Use BufferedReader::copy once available.
-            std::io::copy(&mut source, sink)?;
+            source.copy(sink)?;
         }
         Ok(())
     }
