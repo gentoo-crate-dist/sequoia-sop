@@ -18,7 +18,7 @@ sop-tests:
     - git init spec
     - cd spec
     - git remote add origin https://gitlab.com/dkg/openpgp-stateless-cli
-    - git fetch --depth 1 origin d4870845e925b85bbb0250c9fcc8369f2b191078
+    - git fetch --depth 1 origin 826009f8da3743130e4c97b9b17a57538af6b48f
     - git checkout FETCH_HEAD
     - bash test/evaluate $CI_PROJECT_DIR/target/debug/sqop
     - sh test/simple-sop-test $CI_PROJECT_DIR/target/debug/sqop
