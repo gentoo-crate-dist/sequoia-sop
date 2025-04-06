@@ -422,7 +422,7 @@ impl<'s> GenerateKey<'s> {
 
             // The symbolic aliases.
             "default" => Ok(match openpgp::Profile::default() {
-                openpgp::Profile::RFC4880 => Self::PROFILE_RFC4880,
+                openpgp::Profile::RFC4880 => Self::PROFILE_EDDSA,
                 openpgp::Profile::RFC9580 => Self::PROFILE_RFC9580,
                 _ => Self::PROFILE_RFC9580,
             }),
