@@ -2,6 +2,12 @@
 #+TITLE: sequoia-sop NEWS – history of user-visible changes
 #+STARTUP: content hidestars
 
+* Changes in 0.37.1
+** Notable changes
+   - The default key generation profile is now
+     draft-koch-eddsa-for-openpgp-00 again.
+   - The default profiles are now listed first again.
+
 * Changes in 0.37.0
 ** Notable changes
    - We now support RFC9580.
