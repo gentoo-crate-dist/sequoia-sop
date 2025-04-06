@@ -2616,7 +2616,7 @@ fn symbolic_profiles() -> impl Iterator<Item=&'static str> {
 fn list_profiles(profiles: &[(&str, &str)],
                  normalize: &dyn Fn(&str) -> Result<&'static str>)
                  -> Vec<(String, String)> {
-    profiles.iter()
+    let mut p = profiles.iter()
         .map(|(p, d)| {
             // Discover aliases.
             let aliases = symbolic_profiles()
@@ -2643,7 +2643,15 @@ fn list_profiles(profiles: &[(&str, &str)],
 
             (p.to_string(), description)
         })
-        .collect()
+        .collect::<Vec<_>>();
+
+    // Now sort the default one to the top.
+    if let Ok(default) = normalize("default") {
+        p.sort_by_key(|(name, _)| name != default);
+        assert_eq!(&p[0].0, default);
+    }
+
+    p
 }
 
 /// Prints the error and causes, if any.
