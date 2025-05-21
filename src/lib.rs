@@ -419,10 +419,12 @@ struct GenerateKey<'s> {
 }
 
 impl<'s> GenerateKey<'s> {
+    const PROFILE_PQC: &'static str = "draft-ietf-openpgp-pqc-09";
     const PROFILE_RFC9580: &'static str = "rfc9580";
     const PROFILE_EDDSA: &'static str = "draft-koch-eddsa-for-openpgp-00";
     const PROFILE_RFC4880: &'static str = "rfc4880";
     const PROFILES: &'static [(&'static str, &'static str)] = &[
+        (Self::PROFILE_PQC, "use MLDSA65+Ed25519/MLKEM768+X25519"),
         (Self::PROFILE_RFC9580, "use Ed25519/X25519"),
         (Self::PROFILE_EDDSA, "use EdDSA & ECDH over Cv25519"),
         (Self::PROFILE_RFC4880, "use RSA with 3072 bit keys"),
@@ -430,6 +432,7 @@ impl<'s> GenerateKey<'s> {
 
     fn normalize_profile(profile: &str) -> Result<&'static str> {
         match profile {
+            Self::PROFILE_PQC => Ok(Self::PROFILE_PQC),
             Self::PROFILE_RFC9580 => Ok(Self::PROFILE_RFC9580),
             Self::PROFILE_EDDSA => Ok(Self::PROFILE_EDDSA),
             Self::PROFILE_RFC4880 => Ok(Self::PROFILE_RFC4880),
@@ -440,7 +443,7 @@ impl<'s> GenerateKey<'s> {
                 openpgp::Profile::RFC9580 => Self::PROFILE_RFC9580,
                 _ => Self::PROFILE_RFC9580,
             }),
-            "security" => Ok(Self::PROFILE_RFC9580),
+            "security" => Ok(Self::PROFILE_PQC),
             "performance" => Ok(Self::PROFILE_RFC9580),
             "compatibility" => Ok(Self::PROFILE_RFC4880),
 
@@ -502,6 +505,7 @@ impl<'s> sop::ops::GenerateKey<'s, SQOP<'s>, Keys<'s>> for GenerateKey<'s> {
         }
 
         builder = builder.set_profile(match self.profile {
+            Self::PROFILE_PQC => openpgp::Profile::RFC9580,
             Self::PROFILE_RFC9580 => openpgp::Profile::RFC9580,
             Self::PROFILE_EDDSA => openpgp::Profile::RFC4880,
             Self::PROFILE_RFC4880 => openpgp::Profile::RFC4880,
@@ -509,6 +513,7 @@ impl<'s> sop::ops::GenerateKey<'s, SQOP<'s>, Keys<'s>> for GenerateKey<'s> {
         }).map_err(sop_error)?;
 
         builder = builder.set_cipher_suite(match self.profile {
+            Self::PROFILE_PQC => CipherSuite::MLDSA65,
             Self::PROFILE_RFC9580 => CipherSuite::Cv25519,
             Self::PROFILE_EDDSA => CipherSuite::Cv25519,
             Self::PROFILE_RFC4880 => CipherSuite::RSA3k,

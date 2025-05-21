@@ -30,6 +30,8 @@ anyhow = "1.0.18"
 [build-dependencies]
 sop = "0.8.1"
 sequoia-openpgp = { version = "2", default-features = false }
+openssl = "*"
+openssl-sys = "*"
 
 [lib]
 
@@ -45,3 +47,9 @@ required-features = ["cliv"]
 default = ["sequoia-openpgp/default"]
 cli = ["sop/cli", "dep:sequoia-policy-config"]
 cliv = ["sop/cliv", "dep:sequoia-policy-config"]
+
+[patch.crates-io]
+buffered-reader = { git = "https://gitlab.com/sequoia-pgp/sequoia", branch = "justus/pqc" }
+sequoia-openpgp = { git = "https://gitlab.com/sequoia-pgp/sequoia", branch = "justus/pqc" }
+openssl = { git = "https://github.com/teythoon/rust-openssl", branch = "justus/pqc" }
+openssl-sys = { git = "https://github.com/teythoon/rust-openssl", branch = "justus/pqc" }
