@@ -419,20 +419,36 @@ struct GenerateKey<'s> {
 }
 
 impl<'s> GenerateKey<'s> {
+    const PROFILE_PQC: &'static str = "draft-ietf-openpgp-pqc-13";
     const PROFILE_RFC9580: &'static str = "rfc9580";
     const PROFILE_EDDSA: &'static str = "draft-koch-eddsa-for-openpgp-00";
     const PROFILE_RFC4880: &'static str = "rfc4880";
+    const PROFILE_DRAFT_IETF_OPENPGP_PQC_13_V6_MLDSA65_ED25519:
+        &'static str = "draft-ietf-openpgp-pqc-13-mldsa65-ed25519";
+    const PROFILE_DRAFT_IETF_OPENPGP_PQC_13_V6_MLDSA87_ED448:
+        &'static str = "draft-ietf-openpgp-pqc-13-mldsa87-ed448";
     const PROFILES: &'static [(&'static str, &'static str)] = &[
+        (Self::PROFILE_PQC, "use MLDSA65+Ed25519/MLKEM768+X25519"),
         (Self::PROFILE_RFC9580, "use Ed25519/X25519"),
         (Self::PROFILE_EDDSA, "use EdDSA & ECDH over Cv25519"),
         (Self::PROFILE_RFC4880, "use RSA with 3072 bit keys"),
+        (Self::PROFILE_DRAFT_IETF_OPENPGP_PQC_13_V6_MLDSA65_ED25519,
+         "use MLDSA65+Ed25519 & MLKEM768+X25519"),
+        (Self::PROFILE_DRAFT_IETF_OPENPGP_PQC_13_V6_MLDSA87_ED448,
+         "use MLDSA87+Ed448 & MLKEM1025+X448"),
     ];
 
     fn normalize_profile(profile: &str) -> Result<&'static str> {
         match profile {
+            Self::PROFILE_PQC => Ok(Self::PROFILE_PQC),
             Self::PROFILE_RFC9580 => Ok(Self::PROFILE_RFC9580),
             Self::PROFILE_EDDSA => Ok(Self::PROFILE_EDDSA),
             Self::PROFILE_RFC4880 => Ok(Self::PROFILE_RFC4880),
+
+            Self::PROFILE_DRAFT_IETF_OPENPGP_PQC_13_V6_MLDSA65_ED25519
+                => Ok(Self::PROFILE_DRAFT_IETF_OPENPGP_PQC_13_V6_MLDSA65_ED25519),
+            Self::PROFILE_DRAFT_IETF_OPENPGP_PQC_13_V6_MLDSA87_ED448
+                => Ok(Self::PROFILE_DRAFT_IETF_OPENPGP_PQC_13_V6_MLDSA87_ED448),
 
             // The symbolic aliases.
             "default" => Ok(match openpgp::Profile::default() {
@@ -440,7 +456,7 @@ impl<'s> GenerateKey<'s> {
                 openpgp::Profile::RFC9580 => Self::PROFILE_RFC9580,
                 _ => Self::PROFILE_RFC9580,
             }),
-            "security" => Ok(Self::PROFILE_RFC9580),
+            "security" => Ok(Self::PROFILE_PQC),
             "performance" => Ok(Self::PROFILE_RFC9580),
             "compatibility" => Ok(Self::PROFILE_RFC4880),
 
@@ -505,6 +521,12 @@ impl<'s> sop::ops::GenerateKey<'s, SQOP<'s>, Keys<'s>> for GenerateKey<'s> {
             Self::PROFILE_RFC9580 => openpgp::Profile::RFC9580,
             Self::PROFILE_EDDSA => openpgp::Profile::RFC4880,
             Self::PROFILE_RFC4880 => openpgp::Profile::RFC4880,
+
+            Self::PROFILE_PQC => openpgp::Profile::RFC9580,
+            Self::PROFILE_DRAFT_IETF_OPENPGP_PQC_13_V6_MLDSA65_ED25519
+                => openpgp::Profile::RFC9580,
+            Self::PROFILE_DRAFT_IETF_OPENPGP_PQC_13_V6_MLDSA87_ED448
+                => openpgp::Profile::RFC9580,
             _ => return Err(Error::UnsupportedProfile),
         }).map_err(sop_error)?;
 
@@ -512,6 +534,12 @@ impl<'s> sop::ops::GenerateKey<'s, SQOP<'s>, Keys<'s>> for GenerateKey<'s> {
             Self::PROFILE_RFC9580 => CipherSuite::Cv25519,
             Self::PROFILE_EDDSA => CipherSuite::Cv25519,
             Self::PROFILE_RFC4880 => CipherSuite::RSA3k,
+
+            Self::PROFILE_PQC => CipherSuite::MLDSA65_Ed25519,
+            Self::PROFILE_DRAFT_IETF_OPENPGP_PQC_13_V6_MLDSA65_ED25519
+                => CipherSuite::MLDSA65_Ed25519,
+            Self::PROFILE_DRAFT_IETF_OPENPGP_PQC_13_V6_MLDSA87_ED448
+                => CipherSuite::MLDSA87_Ed448,
             _ => return Err(Error::UnsupportedProfile),
         });
 

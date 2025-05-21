@@ -21,14 +21,14 @@ maintenance = { status = "actively-developed" }
 
 [dependencies]
 sop = "0.8.1"
-sequoia-openpgp = { version = "2", default-features = false }
-sequoia-policy-config = { version = "0.8", default-features = false, optional = true }
-sequoia-wot = { version = "0.14.0", default-features = false }
+sequoia-openpgp = { version = "2.2.0-pqc.1", default-features = false }
+sequoia-policy-config = { version = "0.9.0-pqc.1", default-features = false, optional = true }
+sequoia-wot = { version = "0.16.0-pqc.1", default-features = false }
 anyhow = "1.0.18"
 
 [build-dependencies]
 sop = "0.8.1"
-sequoia-openpgp = { version = "2", default-features = false }
+sequoia-openpgp = { version = "2.2.0-pqc.1", default-features = false }
 
 [lib]
 
