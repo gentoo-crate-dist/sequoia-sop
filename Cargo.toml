@@ -1,4 +1,5 @@
 [package]
+publish = false
 name = "sequoia-sop"
 description = "An implementation of the Stateless OpenPGP Interface using Sequoia"
 version = "0.37.1"
