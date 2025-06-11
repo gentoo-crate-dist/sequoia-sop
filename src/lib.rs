@@ -820,6 +820,11 @@ impl<'s> sop::ops::CertifyUserID<'s, SQOP<'s>, Certs<'s>, Keys<'s>> for CertifyU
             // XXX: https://gitlab.com/dkg/openpgp-stateless-cli/-/issues/119
                 .map_err(|_| Error::KeyCannotSign)?;
 
+            if let RevocationStatus::Revoked(_) = vcert.revocation_status() {
+                // XXX: https://gitlab.com/dkg/openpgp-stateless-cli/-/issues/119
+                return Err(Error::KeyCannotSign);
+            }
+
             let mut one = false;
             for ka in vcert.keys()
                 .supported()
@@ -1046,6 +1051,11 @@ impl Sign<'_> {
         let vcert =
             cert.with_policy(self.sqop.policy, None)
             .map_err(|_| Error::KeyCannotSign)?;
+
+        if let RevocationStatus::Revoked(_) = vcert.revocation_status() {
+            return Err(Error::KeyCannotSign);
+        }
+
         if let Some(p) = vcert.preferred_hash_algorithms() {
             self.hash_algos.retain(|a| p.contains(a));
         }
@@ -1329,6 +1339,10 @@ impl<'s> Encrypt<'s> {
                  -> Result<Box<Self>> {
         let vcert = cert.with_policy(self.sign.sqop.policy, None)
             .map_err(|_| Error::CertCannotEncrypt)?;
+
+        if let RevocationStatus::Revoked(_) = vcert.revocation_status() {
+            return Err(Error::CertCannotEncrypt);
+        }
 
         // If the recipients has preferences, compute the
         // intersection with our list.

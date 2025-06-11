@@ -2,6 +2,11 @@
 #+TITLE: sequoia-sop NEWS – history of user-visible changes
 #+STARTUP: content hidestars
 
+* Changes in 0.37.2
+** Notable changes
+   - We now refuse to encrypt to expired certs, and refuse to use
+     expired keys for certifying or signing.
+
 * Changes in 0.37.1
 ** Notable changes
    - The default key generation profile is now
