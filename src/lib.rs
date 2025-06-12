@@ -105,6 +105,8 @@ impl<'s> sop::Load<'s, SQOP<'s>> for Certs<'s> {
     where
         Self: Sized,
     {
+        let sop_error = |e| sop.sop_error(e);
+
         Ok(Certs {
             sop,
             certs: CertParser::from_reader(source).map_err(sop_error)?
@@ -123,6 +125,8 @@ impl sop::Save for Certs<'_> {
     fn to_writer(&self, armored: bool, sink: &mut (dyn io::Write + Send + Sync))
                  -> Result<()>
     {
+        let sop_error = |e| self.sop.sop_error(e);
+
         if self.certs.len() == 1 {
             let cert = &self.certs[0];
             if armored {
@@ -168,6 +172,8 @@ impl<'s> sop::Load<'s, SQOP<'s>> for Keys<'s> {
     where
         Self: Sized,
     {
+        let sop_error = |e| sop.sop_error(e);
+
         Ok(Keys {
             sop,
             keys: CertParser::from_reader(source).map_err(sop_error)?
@@ -186,6 +192,8 @@ impl sop::Save for Keys<'_> {
     fn to_writer(&self, armored: bool, sink: &mut (dyn io::Write + Send + Sync))
                  -> Result<()>
     {
+        let sop_error = |e| self.sop.sop_error(e);
+
         if self.keys.len() == 1 {
             let key = &self.keys[0];
             if armored {
@@ -297,6 +305,12 @@ impl<'s> SQOP<'s> {
             policy,
             debug: false,
         }
+    }
+
+    /// A "convenient" function to provide the library context to
+    /// [`sop_error`].
+    fn sop_error(&self, e: anyhow::Error) -> Error {
+        sop_error(self, e)
     }
 }
 
@@ -474,6 +488,8 @@ impl<'s> sop::ops::GenerateKey<'s, SQOP<'s>, Keys<'s>> for GenerateKey<'s> {
     }
 
     fn generate(self: Box<Self>) -> Result<Keys<'s>> {
+        let sop_error = |e| self.sqop.sop_error(e);
+
         let mut builder = CertBuilder::new();
         builder = builder.add_signing_subkey();
         if ! self.signing_only {
@@ -548,6 +564,8 @@ impl<'s> sop::ops::ChangeKeyPassword<'s, SQOP<'s>, Keys<'s>> for ChangeKeyPasswo
     }
 
     fn keys(self: Box<Self>, keys: &Keys) -> Result<Keys<'s>> {
+        let sop_error = |e| self.sqop.sop_error(e);
+
         let mut result = vec![];
 
         for key in keys.keys.clone() {
@@ -635,6 +653,8 @@ impl<'s> sop::ops::RevokeKey<'s, SQOP<'s>, Certs<'s>, Keys<'s>> for RevokeKey<'s
     }
 
     fn keys(self: Box<Self>, keys: &Keys) -> Result<Certs<'s>> {
+        let sop_error = |e| self.sqop.sop_error(e);
+
         let mut results = vec![];
         for key in &keys.keys {
             // Get the primary signer.
@@ -720,6 +740,8 @@ impl<'s> MergeCerts<'s> {
     }
 
     fn merge_internal(&mut self, updates: &Certs) -> Result<()> {
+        let sop_error = |e| self.sqop.sop_error(e);
+
         use std::collections::btree_map::Entry;
 
         for cert in updates.certs.iter().cloned() {
@@ -809,6 +831,8 @@ impl<'s> sop::ops::CertifyUserID<'s, SQOP<'s>, Certs<'s>, Keys<'s>> for CertifyU
     }
 
     fn certify(self: Box<Self>, certs: &Certs)-> Result<Certs<'s>> {
+        let sop_error = |e| self.sqop.sop_error(e);
+
         if self.certifiers.is_empty() {
             return Err(Error::MissingArg);
         }
@@ -912,6 +936,8 @@ impl<'s> ValidateUserID<'s> {
     }
 
     fn authenticate(&self, userid: &str, email: bool) -> Result<()> {
+        let sop_error = |e| self.sqop.sop_error(e);
+
         tracer!(self.sqop.debug, "ValidateUserID::authenticate");
         use sequoia_wot::{FULLY_TRUSTED, Network};
 
@@ -1077,6 +1103,8 @@ impl Sign<'_> {
 
     /// Returns the set of signers.
     fn make_signers(&self) -> Result<Vec<openpgp::crypto::KeyPair>> {
+        let sop_error = |e| self.sqop.sop_error(e);
+
         let mut signers = Vec::with_capacity(self.signers.len());
         for cert in &self.signers {
             let vcert =
@@ -1143,6 +1171,8 @@ impl<'s> sop::ops::Sign<'s, SQOP<'s>, Keys<'s>, Sigs<'s>> for Sign<'s> {
     fn data(self: Box<Self>, data: &mut (dyn io::Read + Send + Sync))
             -> Result<(sop::ops::Micalg, Sigs<'s>)>
     {
+        let sop_error = |e| self.sqop.sop_error(e);
+
         if self.signers.is_empty() {
             return Err(Error::MissingArg);
         }
@@ -1237,6 +1267,8 @@ struct VerifySignatures<'s, 'sigs> {
 impl sop::ops::VerifySignatures<'_> for VerifySignatures<'_, '_> {
     fn data(self: Box<Self>, data: &mut (dyn io::Read + Send + Sync))
             -> Result<Vec<sop::ops::Verification>> {
+        let sop_error = |e| self.verify.sqop.sop_error(e);
+
         if self.verify.certs.is_empty() {
             return Err(Error::MissingArg);
         }
@@ -1456,6 +1488,8 @@ impl<'s> sop::ops::Ready<Option<sop::SessionKey>> for EncryptReady<'s> {
     fn to_writer(self: Box<Self>, sink: &mut (dyn io::Write + Send + Sync))
                 -> Result<Option<sop::SessionKey>>
     {
+        let sop_error = |e| self.encrypt.sign.sqop.sop_error(e);
+
         if self.encrypt.recipients.is_empty()
             && self.encrypt.passwords.is_empty()
         {
@@ -1627,6 +1661,8 @@ impl<'s> sop::ops::Ready<(Option<sop::SessionKey>, Vec<sop::ops::Verification>)>
     fn to_writer(self: Box<Self>, sink: &mut (dyn io::Write + Send + Sync))
                 -> Result<(Option<sop::SessionKey>, Vec<sop::ops::Verification>)> {
 
+        let sop_error = |e| self.decrypt.verify.sqop.sop_error(e);
+
         let vhelper = VHelper::new(
             if self.decrypt.verify.verbose {
                 Box::new(io::stderr())
@@ -1671,11 +1707,13 @@ impl<'s> Armor<'s> {
     /// Parse the packet stream to guess the label and profile.
     ///
     /// We make no effort to verify the packet structure.
-    fn dpi(mut source: Box<dyn BufferedReader<Cookie> + 's>)
+    fn dpi(&self, mut source: Box<dyn BufferedReader<Cookie> + 's>)
            -> Result<(Box<dyn BufferedReader<Cookie> + 's>,
                       Option<armor::Kind>,
                       openpgp::Profile)>
     {
+        let sop_error = |e| self.sqop.sop_error(e);
+
         // Our guess at what kind of data we're looking at.
         let mut kind = None;
 
@@ -1831,7 +1869,7 @@ impl<'s> sop::ops::Ready for ArmorReady<'s> {
         }
 
         // Parse the packet stream to guess the label and profile.
-        let (source_, guess, profile) = Armor::dpi(source)?;
+        let (source_, guess, profile) = self.armor.dpi(source)?;
         source = source_;
 
         let kind = match self.armor.label {
@@ -1938,6 +1976,8 @@ struct InlineDetachReady<'s, 'd> {
 impl<'s> sop::ops::Ready<Sigs<'s>> for InlineDetachReady<'s, '_> {
     fn to_writer(self: Box<Self>, sink: &mut (dyn io::Write + Send + Sync))
                 -> Result<Sigs<'s>> {
+        let sop_error = |e| self.inline_detach.sqop.sop_error(e);
+
         let _ = self.inline_detach.sqop;
 
         let np = unsafe { NullPolicy::new() };
@@ -2072,6 +2112,8 @@ struct InlineVerifyReady<'s> {
 impl<'s> sop::ops::Ready<Vec<Verification>> for InlineVerifyReady<'_> {
     fn to_writer(self: Box<Self>, sink: &mut (dyn io::Write + Send + Sync))
                 -> Result<Vec<Verification>> {
+        let sop_error = |e| self.inline_verify.sqop.sop_error(e);
+
         let helper = VHelper::new(
             if self.inline_verify.verbose {
                 Box::new(io::stderr())
@@ -2163,6 +2205,8 @@ impl<'s> sop::ops::Ready for InlineSignReady<'s> {
     fn to_writer(self: Box<Self>, sink: &mut (dyn io::Write + Send + Sync))
                 -> Result<()>
     {
+        let sop_error = |e| self.inline_sign.sign.sqop.sop_error(e);
+
         let mut message = Message::new(sink);
         if ! (self.inline_sign.no_armor
               || matches!(self.inline_sign.mode, InlineSignAs::ClearSigned))
@@ -2683,11 +2727,15 @@ fn print_error_chain(sink: &mut dyn io::Write, err: &anyhow::Error)
 ///
 /// XXX: This is a bit of a friction point.  We likely need to improve
 /// the SOP spec a little.
-fn sop_error(e: anyhow::Error) -> Error {
+fn sop_error(sqop: &SQOP, e: anyhow::Error) -> Error {
+    tracer!(sqop.debug, "sop_error");
+
     let e = match e.downcast::<Error>() {
         Ok(e) => return e,
         Err(e) => e,
     };
+
+    t!("mapping error: {}", e);
 
     let e = match e.downcast::<io::Error>() {
         Ok(e) => return if e.kind() == io::ErrorKind::UnexpectedEof {
@@ -2730,13 +2778,13 @@ fn sop_error(e: anyhow::Error) -> Error {
             InvalidKey(_) => Error::BadData,
             PolicyViolation(_, _) => Error::BadData,
             e => {
-                eprintln!("Warning: Unknown Sequoia error: {}", e);
+                t!("unknown Sequoia error");
                 Error::BadData
             },
         };
     }
 
-    eprintln!("Warning: Untranslated error: {}", e);
+    t!("untranslated error");
     Error::BadData
 }
 
