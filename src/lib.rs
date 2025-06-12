@@ -637,7 +637,7 @@ impl<'s> sop::ops::RevokeKey<'s, SQOP<'s>, Certs<'s>, Keys<'s>> for RevokeKey<'s
     fn keys(self: Box<Self>, keys: &Keys) -> Result<Certs<'s>> {
         let mut results = vec![];
         for key in &keys.keys {
-            // Get the primary singer.
+            // Get the primary signer.
             let mut primary = match key.primary_key().key().parts_as_secret() {
                 Ok(p) => p.clone(),
                 Err(_) => return Err(Error::BadData),
