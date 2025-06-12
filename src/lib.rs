@@ -842,7 +842,10 @@ impl<'s> sop::ops::CertifyUserID<'s, SQOP<'s>, Certs<'s>, Keys<'s>> for CertifyU
             let vcert =
                 cert.with_policy(self.sqop.policy, None)
             // XXX: https://gitlab.com/dkg/openpgp-stateless-cli/-/issues/119
-                .map_err(|_| Error::KeyCannotSign)?;
+                .map_err(|e| {
+                    sop_error(e);
+                    Error::KeyCannotSign
+                })?;
 
             if let RevocationStatus::Revoked(_) = vcert.revocation_status() {
                 // XXX: https://gitlab.com/dkg/openpgp-stateless-cli/-/issues/119
@@ -1076,7 +1079,10 @@ impl Sign<'_> {
     fn add_signing_cert(&mut self, cert: &Cert) -> Result<()> {
         let vcert =
             cert.with_policy(self.sqop.policy, None)
-            .map_err(|_| Error::KeyCannotSign)?;
+            .map_err(|e| {
+                self.sqop.sop_error(e);
+                Error::KeyCannotSign
+            })?;
 
         if let RevocationStatus::Revoked(_) = vcert.revocation_status() {
             return Err(Error::KeyCannotSign);
@@ -1109,7 +1115,10 @@ impl Sign<'_> {
         for cert in &self.signers {
             let vcert =
                 cert.with_policy(self.sqop.policy, None)
-                .map_err(|_| Error::KeyCannotSign)?;
+                .map_err(|e| {
+                    sop_error(e);
+                    Error::KeyCannotSign
+                })?;
 
             let mut one = false;
             for skb in vcert.keys()
@@ -1370,7 +1379,10 @@ impl<'s> Encrypt<'s> {
     fn add_cert(mut self: Box<Self>, cert: &Cert)
                  -> Result<Box<Self>> {
         let vcert = cert.with_policy(self.sign.sqop.policy, None)
-            .map_err(|_| Error::CertCannotEncrypt)?;
+            .map_err(|e| {
+                self.sign.sqop.sop_error(e);
+                Error::CertCannotEncrypt
+            })?;
 
         if let RevocationStatus::Revoked(_) = vcert.revocation_status() {
             return Err(Error::CertCannotEncrypt);
