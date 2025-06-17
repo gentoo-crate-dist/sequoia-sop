@@ -53,3 +53,4 @@ buffered-reader = { git = "https://gitlab.com/sequoia-pgp/sequoia", branch = "ju
 sequoia-openpgp = { git = "https://gitlab.com/sequoia-pgp/sequoia", branch = "justus/pqc" }
 openssl = { git = "https://github.com/teythoon/rust-openssl", branch = "justus/pqc" }
 openssl-sys = { git = "https://github.com/teythoon/rust-openssl", branch = "justus/pqc" }
+sequoia-policy-config = { git = "https://gitlab.com/sequoia-pgp/sequoia-policy-config", branch = "justus/pqc" }

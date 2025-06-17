@@ -1425,11 +1425,12 @@ dependencies = [
 [[package]]
 name = "sequoia-policy-config"
 version = "0.8.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8e016b708d64857b6a97e1a331d9471b73e30ed450d247628e1a0ce236b1e597"
+source = "git+https://gitlab.com/sequoia-pgp/sequoia-policy-config?branch=justus%2Fpqc#114c3f4967a5b735967fdb5742d9d08ee6d5d47d"
 dependencies = [
  "anyhow",
  "chrono",
+ "openssl",
+ "openssl-sys",
  "sequoia-openpgp",
  "serde",
  "thiserror 1.0.69",
