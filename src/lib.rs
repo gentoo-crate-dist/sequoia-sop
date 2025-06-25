@@ -419,7 +419,7 @@ struct GenerateKey<'s> {
 }
 
 impl<'s> GenerateKey<'s> {
-    const PROFILE_PQC: &'static str = "draft-ietf-openpgp-pqc-09";
+    const PROFILE_PQC: &'static str = "draft-ietf-openpgp-pqc-12";
     const PROFILE_RFC9580: &'static str = "rfc9580";
     const PROFILE_EDDSA: &'static str = "draft-koch-eddsa-for-openpgp-00";
     const PROFILE_RFC4880: &'static str = "rfc4880";
