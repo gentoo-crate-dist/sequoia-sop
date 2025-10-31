@@ -41,6 +41,12 @@ name = "sqopv"
 required-features = ["cliv"]
 
 [features]
-default = ["sequoia-openpgp/default"]
+default = ["crypto-nettle"]
 cli = ["sop/cli", "dep:sequoia-policy-config"]
 cliv = ["sop/cliv", "dep:sequoia-policy-config"]
+crypto-nettle = ["sequoia-openpgp/crypto-nettle"]
+crypto-openssl = ["sequoia-openpgp/crypto-openssl"]
+crypto-botan = ["sequoia-openpgp/crypto-botan"]
+crypto-botan2 = ["sequoia-openpgp/crypto-botan2"]
+crypto-cng = ["sequoia-openpgp/crypto-cng"]
+crypto-rust = ["sequoia-openpgp/crypto-rust"]
