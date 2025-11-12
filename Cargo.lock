@@ -2052,7 +2052,7 @@ dependencies = [
 
 [[package]]
 name = "sequoia-sop"
-version = "0.37.3"
+version = "0.38.0-pqc.1"
 dependencies = [
  "anyhow",
  "sequoia-openpgp",
