@@ -50,3 +50,10 @@ crypto-botan = ["sequoia-openpgp/crypto-botan"]
 crypto-botan2 = ["sequoia-openpgp/crypto-botan2"]
 crypto-cng = ["sequoia-openpgp/crypto-cng"]
 crypto-rust = ["sequoia-openpgp/crypto-rust"]
+
+[patch.crates-io]
+buffered-reader = { git = "https://gitlab.com/sequoia-pgp/sequoia", branch = "pqc" }
+sequoia-openpgp = { git = "https://gitlab.com/sequoia-pgp/sequoia", branch = "malte/certbuilder_pk_algos" }
+openssl = { git = "https://github.com/teythoon/rust-openssl", branch = "justus/pqc" }
+openssl-sys = { git = "https://github.com/teythoon/rust-openssl", branch = "justus/pqc" }
+sequoia-policy-config = { git = "https://gitlab.com/sequoia-pgp/sequoia-policy-config", branch = "pqc" }

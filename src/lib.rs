@@ -423,19 +423,42 @@ impl<'s> GenerateKey<'s> {
     const PROFILE_RFC9580: &'static str = "rfc9580";
     const PROFILE_EDDSA: &'static str = "draft-koch-eddsa-for-openpgp-00";
     const PROFILE_RFC4880: &'static str = "rfc4880";
+
+    const PROFILE_DRAFT_IETF_OPENPGP_PQC_13_V4_ED25519:
+        &'static str = "draft-ietf-openpgp-pqc-13-v4-ed25519-mlkem768x25519";
+    const PROFILE_DRAFT_IETF_OPENPGP_PQC_13_V6_ED25519:
+        &'static str = "draft-ietf-openpgp-pqc-13-v6-ed25519-mlkem768x25519";
     const PROFILE_DRAFT_IETF_OPENPGP_PQC_13_V6_MLDSA65_ED25519:
-        &'static str = "draft-ietf-openpgp-pqc-13-mldsa65-ed25519";
+        &'static str = "draft-ietf-openpgp-pqc-13-v6-mldsa65ed25519-mlkem768x25519";
     const PROFILE_DRAFT_IETF_OPENPGP_PQC_13_V6_MLDSA87_ED448:
-        &'static str = "draft-ietf-openpgp-pqc-13-mldsa87-ed448";
+        &'static str = "draft-ietf-openpgp-pqc-13-v6-mldsa87ed448-mlkem1024x448";
+    const PROFILE_DRAFT_IETF_OPENPGP_PQC_13_V6_SLHDSA128S:
+        &'static str = "draft-ietf-openpgp-pqc-13-v6-slhdsa128s-mlkem768x25519";
+    const PROFILE_DRAFT_IETF_OPENPGP_PQC_13_V6_SLHDSA128F:
+        &'static str = "draft-ietf-openpgp-pqc-13-v6-slhdsa128f-mlkem768x25519";
+    const PROFILE_DRAFT_IETF_OPENPGP_PQC_13_V6_SLHDSA256S:
+        &'static str = "draft-ietf-openpgp-pqc-13-v6-slhdsa256s-mlkem1024x448";
+
     const PROFILES: &'static [(&'static str, &'static str)] = &[
         (Self::PROFILE_PQC, "use MLDSA65+Ed25519/MLKEM768+X25519"),
         (Self::PROFILE_RFC9580, "use Ed25519/X25519"),
         (Self::PROFILE_EDDSA, "use EdDSA & ECDH over Cv25519"),
         (Self::PROFILE_RFC4880, "use RSA with 3072 bit keys"),
+
+        (Self::PROFILE_DRAFT_IETF_OPENPGP_PQC_13_V4_ED25519,
+            "use Ed25519 & ML-KEM-768+X25519 (OpenPGP v4)"),
+        (Self::PROFILE_DRAFT_IETF_OPENPGP_PQC_13_V6_ED25519,
+            "use Ed25519 & ML-KEM-768+X25519 (OpenPGP v6)"),
         (Self::PROFILE_DRAFT_IETF_OPENPGP_PQC_13_V6_MLDSA65_ED25519,
-         "use MLDSA65+Ed25519 & MLKEM768+X25519"),
+            "use ML-DSA-65+Ed25519 & ML-KEM-768+X25519"),
         (Self::PROFILE_DRAFT_IETF_OPENPGP_PQC_13_V6_MLDSA87_ED448,
-         "use MLDSA87+Ed448 & MLKEM1025+X448"),
+            "use ML-DSA-87+Ed448 & ML-KEM-1024+X448"),
+        (Self::PROFILE_DRAFT_IETF_OPENPGP_PQC_13_V6_SLHDSA128S,
+            "use SLH-DSA-SHAKE-128s & ML-KEM-768+X25519"),
+        (Self::PROFILE_DRAFT_IETF_OPENPGP_PQC_13_V6_SLHDSA128F,
+            "use SLH-DSA-SHAKE-128f & ML-KEM-768+X25519"),
+        (Self::PROFILE_DRAFT_IETF_OPENPGP_PQC_13_V6_SLHDSA256S,
+            "use SLH-DSA-SHAKE-256s & ML-KEM-1024+X448"),
     ];
 
     fn normalize_profile(profile: &str) -> Result<&'static str> {
@@ -445,10 +468,20 @@ impl<'s> GenerateKey<'s> {
             Self::PROFILE_EDDSA => Ok(Self::PROFILE_EDDSA),
             Self::PROFILE_RFC4880 => Ok(Self::PROFILE_RFC4880),
 
+            Self::PROFILE_DRAFT_IETF_OPENPGP_PQC_13_V4_ED25519
+                => Ok(Self::PROFILE_DRAFT_IETF_OPENPGP_PQC_13_V4_ED25519),
+            Self::PROFILE_DRAFT_IETF_OPENPGP_PQC_13_V6_ED25519
+                => Ok(Self::PROFILE_DRAFT_IETF_OPENPGP_PQC_13_V6_ED25519),
             Self::PROFILE_DRAFT_IETF_OPENPGP_PQC_13_V6_MLDSA65_ED25519
                 => Ok(Self::PROFILE_DRAFT_IETF_OPENPGP_PQC_13_V6_MLDSA65_ED25519),
             Self::PROFILE_DRAFT_IETF_OPENPGP_PQC_13_V6_MLDSA87_ED448
                 => Ok(Self::PROFILE_DRAFT_IETF_OPENPGP_PQC_13_V6_MLDSA87_ED448),
+            Self::PROFILE_DRAFT_IETF_OPENPGP_PQC_13_V6_SLHDSA128S
+                => Ok(Self::PROFILE_DRAFT_IETF_OPENPGP_PQC_13_V6_SLHDSA128S),
+            Self::PROFILE_DRAFT_IETF_OPENPGP_PQC_13_V6_SLHDSA128F
+                => Ok(Self::PROFILE_DRAFT_IETF_OPENPGP_PQC_13_V6_SLHDSA128F),
+            Self::PROFILE_DRAFT_IETF_OPENPGP_PQC_13_V6_SLHDSA256S
+                => Ok(Self::PROFILE_DRAFT_IETF_OPENPGP_PQC_13_V6_SLHDSA256S),
 
             // The symbolic aliases.
             "default" => Ok(match openpgp::Profile::default() {
@@ -523,25 +556,71 @@ impl<'s> sop::ops::GenerateKey<'s, SQOP<'s>, Keys<'s>> for GenerateKey<'s> {
             Self::PROFILE_RFC4880 => openpgp::Profile::RFC4880,
 
             Self::PROFILE_PQC => openpgp::Profile::RFC9580,
-            Self::PROFILE_DRAFT_IETF_OPENPGP_PQC_13_V6_MLDSA65_ED25519
+
+            Self::PROFILE_DRAFT_IETF_OPENPGP_PQC_13_V4_ED25519
+            | Self::PROFILE_DRAFT_IETF_OPENPGP_PQC_13_V6_ED25519
+            | Self::PROFILE_DRAFT_IETF_OPENPGP_PQC_13_V6_MLDSA65_ED25519
+            | Self::PROFILE_DRAFT_IETF_OPENPGP_PQC_13_V6_MLDSA87_ED448
+            | Self::PROFILE_DRAFT_IETF_OPENPGP_PQC_13_V6_SLHDSA128S
+            | Self::PROFILE_DRAFT_IETF_OPENPGP_PQC_13_V6_SLHDSA128F
+            | Self::PROFILE_DRAFT_IETF_OPENPGP_PQC_13_V6_SLHDSA256S
                 => openpgp::Profile::RFC9580,
-            Self::PROFILE_DRAFT_IETF_OPENPGP_PQC_13_V6_MLDSA87_ED448
-                => openpgp::Profile::RFC9580,
+
             _ => return Err(Error::UnsupportedProfile),
         }).map_err(sop_error)?;
 
-        builder = builder.set_cipher_suite(match self.profile {
-            Self::PROFILE_RFC9580 => CipherSuite::Cv25519,
-            Self::PROFILE_EDDSA => CipherSuite::Cv25519,
-            Self::PROFILE_RFC4880 => CipherSuite::RSA3k,
+        match self.profile {
+            Self::PROFILE_RFC9580
+            | Self::PROFILE_EDDSA => {
+                builder = builder.set_cipher_suite(CipherSuite::Cv25519);
+            },
+            Self::PROFILE_RFC4880 => {
+                builder = builder.set_cipher_suite(CipherSuite::RSA3k);
+            },
+            Self::PROFILE_PQC => {
+                builder = builder.set_cipher_suite(CipherSuite::MLDSA65_Ed25519);
+            },
 
-            Self::PROFILE_PQC => CipherSuite::MLDSA65_Ed25519,
-            Self::PROFILE_DRAFT_IETF_OPENPGP_PQC_13_V6_MLDSA65_ED25519
-                => CipherSuite::MLDSA65_Ed25519,
-            Self::PROFILE_DRAFT_IETF_OPENPGP_PQC_13_V6_MLDSA87_ED448
-                => CipherSuite::MLDSA87_Ed448,
+            Self::PROFILE_DRAFT_IETF_OPENPGP_PQC_13_V4_ED25519
+            | Self::PROFILE_DRAFT_IETF_OPENPGP_PQC_13_V6_ED25519 => {
+                builder = builder.set_cipher_suite(CipherSuite::Ed25519_MLKEM768);
+            },
+            Self::PROFILE_DRAFT_IETF_OPENPGP_PQC_13_V6_MLDSA65_ED25519 => {
+                builder = builder.set_cipher_suite(CipherSuite::MLDSA65_Ed25519);
+            },
+            Self::PROFILE_DRAFT_IETF_OPENPGP_PQC_13_V6_MLDSA87_ED448 => {
+                builder = builder.set_cipher_suite(CipherSuite::MLDSA87_Ed448);
+            },
+
+            // there are no corresponding ciphersuites in sequoia_openpgp for the
+            // SLHDSA... algorithms. Set the algorithms directly.
+            Self::PROFILE_DRAFT_IETF_OPENPGP_PQC_13_V6_SLHDSA128S => {
+                builder = builder
+                    .set_signing_algorithm(PublicKeyAlgorithm::SLHDSA128s, None, None)
+                    .map_err(sop_error)?;
+                builder = builder
+                    .set_encryption_algorithm(PublicKeyAlgorithm::MLKEM768_X25519, None, None)
+                    .map_err(sop_error)?;
+            },
+            Self::PROFILE_DRAFT_IETF_OPENPGP_PQC_13_V6_SLHDSA128F => {
+                builder = builder
+                    .set_signing_algorithm(PublicKeyAlgorithm::SLHDSA128f, None, None)
+                    .map_err(sop_error)?;
+                builder = builder
+                    .set_encryption_algorithm(PublicKeyAlgorithm::MLKEM768_X25519, None, None)
+                    .map_err(sop_error)?;
+            },
+            Self::PROFILE_DRAFT_IETF_OPENPGP_PQC_13_V6_SLHDSA256S => {
+                builder = builder
+                    .set_signing_algorithm(PublicKeyAlgorithm::SLHDSA256s, None, None)
+                    .map_err(sop_error)?;
+                builder = builder
+                    .set_encryption_algorithm(PublicKeyAlgorithm::MLKEM1024_X448, None, None)
+                    .map_err(sop_error)?;
+            },
+
             _ => return Err(Error::UnsupportedProfile),
-        });
+        }
 
         for u in self.userids {
             builder = builder.add_userid(u);
