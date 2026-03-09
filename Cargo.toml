@@ -14,6 +14,7 @@ categories = ["cryptography", "command-line-utilities"]
 license = "GPL-2.0-or-later"
 edition = "2021"
 rust-version = "1.85"
+resolver = "3"
 
 [badges]
 gitlab = { repository = "sequoia-pgp/sequoia-sop" }
