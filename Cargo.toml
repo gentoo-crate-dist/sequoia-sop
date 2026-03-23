@@ -55,5 +55,6 @@ crypto-rust = ["sequoia-openpgp/crypto-rust"]
 [lints.clippy]
 # default clippy lint levels matching the common-ci environment:
 # https://gitlab.com/sequoia-pgp/common-ci/-/blob/main/templates/precheck.yml
+suspicious = { level = "deny", priority = -1 }
 style = { level = "allow", priority = -1 }
 complexity = { level = "allow", priority = -1 }
