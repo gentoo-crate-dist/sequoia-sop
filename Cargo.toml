@@ -14,6 +14,7 @@ categories = ["cryptography", "command-line-utilities"]
 license = "GPL-2.0-or-later"
 edition = "2021"
 rust-version = "1.85"
+resolver = "3"
 
 [badges]
 gitlab = { repository = "sequoia-pgp/sequoia-sop" }
@@ -50,3 +51,10 @@ crypto-botan = ["sequoia-openpgp/crypto-botan"]
 crypto-botan2 = ["sequoia-openpgp/crypto-botan2"]
 crypto-cng = ["sequoia-openpgp/crypto-cng"]
 crypto-rust = ["sequoia-openpgp/crypto-rust"]
+
+[lints.clippy]
+# default clippy lint levels matching the common-ci environment:
+# https://gitlab.com/sequoia-pgp/common-ci/-/blob/main/templates/precheck.yml
+suspicious = { level = "deny", priority = -1 }
+style = { level = "allow", priority = -1 }
+complexity = { level = "allow", priority = -1 }
