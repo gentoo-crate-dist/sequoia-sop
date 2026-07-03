@@ -2885,4 +2885,50 @@ mod tests {
 
         Ok(())
     }
+
+    #[test]
+    fn test_pqc() -> Result<()> {
+        if ! openpgp::PublicKeyAlgorithm::MLDSA65_Ed25519.is_supported() {
+            eprintln!("MLDSA65_Ed25519 is not supported, skipping.");
+            return Ok(());
+        }
+
+        let sop = SQOP::default();
+
+        let alice_sec = sop.generate_key()?
+            .profile("rfc9980")?
+            .userid("Alice Lovelace <alice@openpgp.example>")
+            .generate()?;
+        let alice_pgp = sop.extract_cert()?
+            .keys(&alice_sec)?;
+
+        let statement = b"Hello World :)";
+        let mut data = Cursor::new(&statement);
+        let (_micalg, signature) = sop.sign()?
+            .mode(SignAs::Text)
+            .keys(&alice_sec)?
+            .data(&mut data)?;
+
+        let verifications = sop.verify()?
+            .certs(&alice_pgp)?
+            .signatures(&signature)?
+            .data(&mut Cursor::new(&statement))?;
+        assert_eq!(verifications.len(), 1);
+
+        let mut statement_cur = Cursor::new(&statement);
+        let (_session_key, ciphertext) = sop.encrypt()?
+            .sign_with_keys(&alice_sec)?
+            .with_certs(&alice_pgp)?
+            .plaintext(&mut statement_cur)?
+            .to_vec()?;
+
+        let mut ciphertext_cur = Cursor::new(&ciphertext);
+        let (_, plaintext) = sop.decrypt()?
+            .with_keys(&alice_sec)?
+            .ciphertext(&mut ciphertext_cur)?
+            .to_vec()?;
+        assert_eq!(&plaintext, statement);
+
+        Ok(())
+    }
 }
