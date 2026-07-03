@@ -11,7 +11,7 @@ variables:
 
 sop-tests:
   stage: test
-  image: jampot.sequoia-pgp.org/sequoia-pgp/build-docker-image/trixie:latest
+  image: registry.sequoia-pgp.org/sequoia-pgp/build-docker-image/trixie:latest
   script:
     - cargo build --features cli
     - mkdir spec
