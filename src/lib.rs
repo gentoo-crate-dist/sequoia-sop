@@ -422,10 +422,12 @@ impl<'s> GenerateKey<'s> {
     const PROFILE_RFC9580: &'static str = "rfc9580";
     const PROFILE_EDDSA: &'static str = "draft-koch-eddsa-for-openpgp-00";
     const PROFILE_RFC4880: &'static str = "rfc4880";
+    const PROFILE_RFC9980: &'static str = "rfc9980";
     const PROFILES: &'static [(&'static str, &'static str)] = &[
         (Self::PROFILE_RFC9580, "use Ed25519/X25519"),
         (Self::PROFILE_EDDSA, "use EdDSA & ECDH over Cv25519"),
         (Self::PROFILE_RFC4880, "use RSA with 3072 bit keys"),
+        (Self::PROFILE_RFC9980, "use MLDSA65+Ed25519 & MLKEM768+X25519"),
     ];
 
     fn normalize_profile(profile: &str) -> Result<&'static str> {
@@ -433,6 +435,7 @@ impl<'s> GenerateKey<'s> {
             Self::PROFILE_RFC9580 => Ok(Self::PROFILE_RFC9580),
             Self::PROFILE_EDDSA => Ok(Self::PROFILE_EDDSA),
             Self::PROFILE_RFC4880 => Ok(Self::PROFILE_RFC4880),
+            Self::PROFILE_RFC9980 => Ok(Self::PROFILE_RFC9980),
 
             // The symbolic aliases.
             "default" => Ok(match openpgp::Profile::default() {
@@ -440,7 +443,7 @@ impl<'s> GenerateKey<'s> {
                 openpgp::Profile::RFC9580 => Self::PROFILE_RFC9580,
                 _ => Self::PROFILE_RFC9580,
             }),
-            "security" => Ok(Self::PROFILE_RFC9580),
+            "security" => Ok(Self::PROFILE_RFC9980),
             "performance" => Ok(Self::PROFILE_RFC9580),
             "compatibility" => Ok(Self::PROFILE_RFC4880),
 
@@ -505,6 +508,7 @@ impl<'s> sop::ops::GenerateKey<'s, SQOP<'s>, Keys<'s>> for GenerateKey<'s> {
             Self::PROFILE_RFC9580 => openpgp::Profile::RFC9580,
             Self::PROFILE_EDDSA => openpgp::Profile::RFC4880,
             Self::PROFILE_RFC4880 => openpgp::Profile::RFC4880,
+            Self::PROFILE_RFC9980 => openpgp::Profile::RFC9580,
             _ => return Err(Error::UnsupportedProfile),
         }).map_err(sop_error)?;
 
@@ -512,6 +516,7 @@ impl<'s> sop::ops::GenerateKey<'s, SQOP<'s>, Keys<'s>> for GenerateKey<'s> {
             Self::PROFILE_RFC9580 => CipherSuite::Cv25519,
             Self::PROFILE_EDDSA => CipherSuite::Cv25519,
             Self::PROFILE_RFC4880 => CipherSuite::RSA3k,
+            Self::PROFILE_RFC9980 => CipherSuite::MLDSA65_Ed25519,
             _ => return Err(Error::UnsupportedProfile),
         });
 
